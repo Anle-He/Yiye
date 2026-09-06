@@ -19,5 +19,4 @@ public sealed class DashboardShowcaseItem
     public string RankMaximumLabel => AggregateRank is null ? string.Empty : $"/ {RatingScale.RankMaximum:0.0}";
     public string CompletionLabel => CompletionCount == 1 ? "完成 1 次" : $"完成 {CompletionCount} 次";
     public string LatestDateLabel => LatestCompletedOn.ToString("yyyy.MM.dd");
-    public string FirstDateLabel => FirstCompletedOn.ToString("M月d日");
 }

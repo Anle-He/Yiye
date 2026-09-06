@@ -110,15 +110,19 @@ public sealed class UiSmokeTests
             window.DashboardTopBooks.Add(work);
             if (index == 1) window.DashboardTopScreens.Add(work);
             window.DashboardRecentWorks.Add(work);
+            window.DashboardTimelineDays.Add(new DashboardTimelineDay
+            {
+                Date = work.LatestCompletedOn,
+                Items = [new DashboardTimelineItem { Id = $"event-{index}", WorkId = work.WorkId,
+                    Title = work.Title, Kind = "book", EventType = "completion", Metric = "duration" }]
+            });
             window.DashboardTopAuthors.Add(new DashboardAuthorRank
             {
                 Position = index, Author = $"作者 {index}", WorkCount = 2, RatingCount = 3, WeightedRank = 3.5
             });
         }
         var panel = (StackPanel)window.FindName("DashboardShowcasePanel");
-        ((Button)window.FindName("DashboardFirstBookCard")).DataContext = window.DashboardTopBooks[0];
-        ((TextBlock)window.FindName("DashboardFirstBookEmpty")).Visibility = Visibility.Collapsed;
-        foreach (var width in new[] { 850d, 600d })
+        foreach (var width in new[] { 1100d, 850d, 600d })
         {
             panel.Measure(new Size(width, double.PositiveInfinity));
             panel.Arrange(new Rect(0, 0, width, panel.DesiredSize.Height));
@@ -136,15 +140,19 @@ public sealed class UiSmokeTests
             }
             Assert.True(((Border)window.FindName("DashboardScreenRanking")).ActualHeight <
                         ((Border)window.FindName("DashboardBookRanking")).ActualHeight);
-            var firstBookSection = (Border)window.FindName("DashboardFirstBookSection");
-            Assert.Equal(width < 740 ? 1 : 0, Grid.GetRow(firstBookSection));
+            var sideColumn = (StackPanel)window.FindName("DashboardSideColumn");
+            Assert.Equal(width < 720 ? 1 : 0, Grid.GetRow(sideColumn));
             foreach (var list in Descendants(panel).OfType<ItemsControl>()
                          .Where(list => ReferenceEquals(list.ItemTemplate, window.Resources["ShowcaseRankItemTemplate"])))
             {
                 Assert.All(Descendants(list).OfType<Button>(), button =>
                     Assert.True(button.ActualWidth >= list.ActualWidth - 1, "Rank rows should fill the list width."));
             }
-            Assert.Equal(width < 780 ? 1 : 0, Grid.GetRow((Border)window.FindName("DashboardAuthorRanking")));
+            var mainColumn = (StackPanel)window.FindName("DashboardMainColumn");
+            var recent = (Border)window.FindName("DashboardRecentSection");
+            var journal = (Border)window.FindName("DashboardJournalSection");
+            Assert.InRange(journal.TranslatePoint(new Point(), mainColumn).Y - recent.ActualHeight, 11.5, 12.5);
+            Assert.Equal(3, sideColumn.Children.Count);
             SaveSnapshot(panel, $"dashboard-showcase-{width:0}.png");
         }
     }
@@ -164,13 +172,13 @@ public sealed class UiSmokeTests
         {
             ContentTemplate = timeline.ItemTemplate,
             Resources = mainWindow.Resources,
-            Width = 740,
+            Width = 280,
             Content = new DashboardTimelineDay
             {
                 Date = new DateOnly(2026, 8, 28),
                 Items = new[] { "completion" }.Select(type => new DashboardTimelineItem
                 {
-                    Id = type, WorkId = "timeline-test", Title = "一本正在读的书", Kind = "book",
+                    Id = type, WorkId = "timeline-test", Title = "一本完成的书", Kind = "book",
                     EventType = type, Metric = "duration", Amount = 30,
                     Notes = type == "completion" ? "合上书之后，仍然记得这一段旅程。" : null
                 }).ToArray()
@@ -184,7 +192,7 @@ public sealed class UiSmokeTests
         Assert.All(buttons, button =>
         {
             Assert.IsType<DashboardTimelineItem>(button.Tag);
-            Assert.True(button.ActualWidth > 500, "Timeline actions should fill the date card.");
+            Assert.True(button.ActualWidth > 180, "Timeline actions should fill the date card.");
             Assert.True(button.Focusable);
         });
         SaveSnapshot(presenter, "timeline-day.png");
