@@ -140,7 +140,7 @@ public sealed class UiSmokeTests
             }
             Assert.True(((Border)window.FindName("DashboardScreenRanking")).ActualHeight <
                         ((Border)window.FindName("DashboardBookRanking")).ActualHeight);
-            var sideColumn = (StackPanel)window.FindName("DashboardSideColumn");
+            var sideColumn = (Grid)window.FindName("DashboardSideColumn");
             Assert.Equal(width < 720 ? 1 : 0, Grid.GetRow(sideColumn));
             foreach (var list in Descendants(panel).OfType<ItemsControl>()
                          .Where(list => ReferenceEquals(list.ItemTemplate, window.Resources["ShowcaseRankItemTemplate"])))
@@ -148,12 +148,38 @@ public sealed class UiSmokeTests
                 Assert.All(Descendants(list).OfType<Button>(), button =>
                     Assert.True(button.ActualWidth >= list.ActualWidth - 1, "Rank rows should fill the list width."));
             }
-            var mainColumn = (StackPanel)window.FindName("DashboardMainColumn");
+            var mainColumn = (Grid)window.FindName("DashboardMainColumn");
             var recent = (Border)window.FindName("DashboardRecentSection");
             var journal = (Border)window.FindName("DashboardJournalSection");
             Assert.InRange(journal.TranslatePoint(new Point(), mainColumn).Y - recent.ActualHeight, 11.5, 12.5);
             Assert.Equal(3, sideColumn.Children.Count);
+            if (width >= 720)
+            {
+                var author = (Border)window.FindName("DashboardAuthorRanking");
+                var journalBottom = journal.TranslatePoint(new Point(0, journal.ActualHeight), panel).Y;
+                var authorBottom = author.TranslatePoint(new Point(0, author.ActualHeight), panel).Y;
+                Assert.InRange(Math.Abs(journalBottom - authorBottom), 0, 0.5);
+            }
             SaveSnapshot(panel, $"dashboard-showcase-{width:0}.png");
+        }
+        ((Border)window.FindName("DashboardHero")).Visibility = Visibility.Collapsed;
+        ((Grid)window.FindName("DashboardCollectionHeader")).Visibility = Visibility.Visible;
+        var scroll = (ScrollViewer)window.FindName("DashboardScroll");
+        var root = (Grid)window.Content;
+        window.Content = null;
+        root.DataContext = window;
+        root.Resources = window.Resources;
+        window.DashboardTopBooks.RemoveAt(2);
+        window.DashboardTopAuthors.RemoveAt(2);
+        window.DashboardTopScreens.Add(window.DashboardTopBooks[1]);
+        window.DashboardTimelineDays.Add(window.DashboardTimelineDays[0]);
+        foreach (var height in new[] { 800d, 640d, 800d })
+        {
+            scroll.Visibility = Visibility.Visible;
+            root.Measure(new Size(1280, height));
+            root.Arrange(new Rect(0, 0, 1280, height));
+            root.UpdateLayout();
+            Assert.True((height < 700) == (scroll.ScrollableHeight > 0), $"height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, desired={scroll.DesiredSize}");
         }
     }
 
