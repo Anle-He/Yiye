@@ -447,7 +447,7 @@
                     <TextBlock Text="选择左侧作品，回到某一次阅读或观看。" Margin="0,7,0,0" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
                 </StackPanel>
                 <ScrollViewer x:Name="DetailScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="32,28,32,32">
+                    <StackPanel Margin="24,16,24,12">
                         <Border x:Name="DetailHeroShell" Style="{StaticResource WidgetShell}">
                         <Border Background="{StaticResource SurfaceBrush}" CornerRadius="18" Padding="20" Effect="{StaticResource CardShadow}">
                         <Grid x:Name="DetailHero" MinHeight="232">
@@ -478,7 +478,7 @@
                         </Border>
                         </Border>
 
-                        <Border Margin="0,16,0,0" Style="{StaticResource WidgetShell}"><Border CornerRadius="17" BorderBrush="#C4D5CA" BorderThickness="1" Padding="22,18">
+                        <Border Margin="0,12,0,0" Style="{StaticResource WidgetShell}"><Border CornerRadius="17" BorderBrush="#C4D5CA" BorderThickness="1" Padding="22,12">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                                     <GradientStop Color="#E4EFE8" Offset="0" />
@@ -495,7 +495,7 @@
                             </Grid>
                         </Border></Border>
 
-                        <Grid Margin="2,26,2,12">
+                        <Grid Margin="2,16,2,8">
                             <StackPanel><TextBlock Text="个人历程" Style="{StaticResource SectionEyebrow}" /><TextBlock Text="历次完成" Margin="0,5,0,0" Style="{StaticResource SectionTitle}" /></StackPanel>
                             <TextBlock x:Name="HistoryCaptionText" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,2,1" Foreground="{StaticResource MutedBrush}" />
                         </Grid>

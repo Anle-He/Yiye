@@ -35,6 +35,7 @@ public sealed class UiSmokeTests
                 AssertExperienceRatingTemplate(mainWindow);
                 AssertTimelineTemplate(mainWindow);
                 AssertDashboardLayout(mainWindow);
+                AssertDetailLayout();
                 var addWork = new AddWorkWindow();
                 Assert.IsType<Border>(addWork.FindName("WorkFormSection"));
                 var addExperience = new AddExperienceWindow("ui-test", "book");
@@ -181,6 +182,55 @@ public sealed class UiSmokeTests
             root.UpdateLayout();
             Assert.True((height < 700) == (scroll.ScrollableHeight > 0), $"height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, desired={scroll.DesiredSize}");
         }
+    }
+
+    private static void AssertDetailLayout()
+    {
+        var window = new MainWindow();
+        ((ScrollViewer)window.FindName("DashboardScroll")).Visibility = Visibility.Collapsed;
+        ((FrameworkElement)window.FindName("DetailEmpty")).Visibility = Visibility.Collapsed;
+        ((FrameworkElement)window.FindName("HistoryEmpty")).Visibility = Visibility.Collapsed;
+        var scroll = (ScrollViewer)window.FindName("DetailScroll");
+        scroll.Visibility = Visibility.Visible;
+        foreach (var (name, text) in new[]
+        {
+            ("DetailTitleText", "真事隐"), ("DetailSubtitleText", "康熙废储与正史虚构"),
+            ("DetailAuthorText", "孙立天"), ("DetailMetaText", "书籍 · 已记录 1 次 · 最近 2026-09-13"),
+            ("DetailRankText", "3.5 / 3.9"), ("DetailCountText", "阅读 1 次"),
+            ("DetailRatingCountText", "来自 1 次评分"), ("HistoryCaptionText", "共 1 次")
+        })
+        {
+            var label = (TextBlock)window.FindName(name);
+            label.Text = text;
+            label.Visibility = Visibility.Visible;
+        }
+        window.CompletedExperiences.Add(new ExperienceArchiveCard
+        {
+            ArchiveNumber = 1,
+            Experience = new MediaExperience { WorkId = "detail-layout", CompletedOn = new DateOnly(2026, 9, 13),
+                Allure = 3, Immersion = 4, Rationality = 5, Illumination = 4 }
+        });
+        var root = (Grid)window.Content;
+        window.Content = null;
+        root.DataContext = window;
+        root.Resources = window.Resources;
+        void Layout(double height)
+        {
+            root.Measure(new Size(1280, height));
+            root.Arrange(new Rect(0, 0, 1280, height));
+            root.UpdateLayout();
+        }
+        foreach (var height in new[] { 800d, 640d, 800d })
+        {
+            Layout(height);
+            Assert.True((height < 700) == (scroll.ScrollableHeight > 0),
+                $"Detail height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}");
+        }
+        SaveSnapshot(root, "detail-single-record.png");
+        window.CompletedExperiences.Add(window.CompletedExperiences[0]);
+        Layout(800);
+        Assert.True(scroll.ScrollableHeight > 0, "Multiple completion records remain scrollable.");
+        window.Close();
     }
 
     private static void SnapshotWindow(Window window, string fileName)
