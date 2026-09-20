@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Yiye.App/Yiye.App.csproj" />
+  <Project Path="tests/Yiye.Tests/Yiye.Tests.csproj" />
+</Solution>

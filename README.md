@@ -16,7 +16,7 @@
 
 ## 安装与数据
 
-需要 Windows x64 和 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)。从 [Releases](https://github.com/Anle-He/Yiye/releases) 下载 `QuietShelf-Setup-<版本>.exe`，后续安装包使用 `Yiye-Setup-<版本>.exe` 命名。安装后可从开始菜单搜索 `Yiye` 启动，并在 Windows“已安装的应用”中卸载。
+需要 Windows x64 和 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)。从 [Releases](https://github.com/Anle-He/Yiye/releases) 下载 `Yiye-Setup-<版本>.exe`。安装后可从开始菜单搜索 `Yiye` 启动，并在 Windows“已安装的应用”中卸载。
 
 默认数据目录：
 
@@ -24,15 +24,15 @@
 %LOCALAPPDATA%\QuietShelf
 ```
 
-其中 `records.db` 保存记录，`covers` 保存封面；数据库升级前生成的备份也位于此处。需要更换位置时，可以设置环境变量 `QUIETSHELF_DATA_DIR`。
+其中 `records.db` 保存记录，`covers` 保存封面；数据库升级前生成的备份也位于此处。需要更换位置时，可以设置环境变量 `YIYE_DATA_DIR`，同时兼容原有的 `QUIETSHELF_DATA_DIR`。
 
 ## 从源码构建
 
 需要 Windows 和 .NET 10 SDK：
 
 ```powershell
-dotnet restore .\QuietShelf.slnx --locked-mode
-dotnet build .\QuietShelf.slnx --no-restore -c Release
+dotnet restore .\Yiye.slnx --locked-mode
+dotnet build .\Yiye.slnx --no-restore -c Release
 ```
 
 生成安装包还需要 Inno Setup 6：

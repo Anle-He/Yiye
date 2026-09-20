@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="src/QuietShelf.App/QuietShelf.App.csproj" />
-  <Project Path="tests/QuietShelf.Tests/QuietShelf.Tests.csproj" />
-</Solution>

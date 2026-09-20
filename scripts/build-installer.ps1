@@ -9,10 +9,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$projectPath = Join-Path $repositoryRoot "src\QuietShelf.App\QuietShelf.App.csproj"
+$projectPath = Join-Path $repositoryRoot "src\Yiye.App\Yiye.App.csproj"
 $publishDirectory = Join-Path $repositoryRoot "artifacts\win-x64"
 $installerDirectory = Join-Path $repositoryRoot "artifacts\installer"
-$installerScript = Join-Path $repositoryRoot "installer\QuietShelf.iss"
+$installerScript = Join-Path $repositoryRoot "installer\Yiye.iss"
 
 function Get-ProjectProperty([string]$Name) {
     $value = & $DotnetPath msbuild $projectPath -nologo "-getProperty:$Name"
@@ -61,9 +61,9 @@ if ([string]::IsNullOrWhiteSpace($IsccPath) -or -not (Test-Path -LiteralPath $Is
 # Some Inno Setup builds have a 0.0.0.0 PE version; query the compiler engine itself.
 $versionProbe = @'
 [Setup]
-AppName=QuietShelfToolchainProbe
+AppName=YiyeToolchainProbe
 AppVersion=0
-DefaultDirName={tmp}\QuietShelfToolchainProbe
+DefaultDirName={tmp}\YiyeToolchainProbe
 CreateAppDir=no
 Uninstallable=no
 Output=no
@@ -98,14 +98,14 @@ if ($NoRestore) {
 
 & $DotnetPath @publishArguments
 if ($LASTEXITCODE -ne 0) {
-    throw "QuietShelf publish failed with exit code $LASTEXITCODE."
+    throw "Yiye publish failed with exit code $LASTEXITCODE."
 }
 
 $requiredPublishFiles = @(
-    "QuietShelf.App.exe",
-    "QuietShelf.App.dll",
-    "QuietShelf.App.deps.json",
-    "QuietShelf.App.runtimeconfig.json",
+    "Yiye.App.exe",
+    "Yiye.App.dll",
+    "Yiye.App.deps.json",
+    "Yiye.App.runtimeconfig.json",
     "Microsoft.Data.Sqlite.dll",
     "Wpf.Ui.dll"
 )

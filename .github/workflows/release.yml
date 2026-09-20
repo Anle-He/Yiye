@@ -43,7 +43,7 @@ jobs:
         id: project-version
         shell: pwsh
         run: |
-          $projectVersion = (dotnet msbuild .\src\QuietShelf.App\QuietShelf.App.csproj -nologo -getProperty:Version).Trim()
+          $projectVersion = (dotnet msbuild .\src\Yiye.App\Yiye.App.csproj -nologo -getProperty:Version).Trim()
           "value=$projectVersion" >> $env:GITHUB_OUTPUT
 
       - name: Verify tag matches project version
@@ -58,13 +58,13 @@ jobs:
 
       - name: Restore locked dependencies
         run: |
-          dotnet restore .\QuietShelf.slnx --locked-mode
-          dotnet restore .\src\QuietShelf.App\QuietShelf.App.csproj --locked-mode -r win-x64 -p:PublishSingleFile=false -p:SelfContained=false
+          dotnet restore .\Yiye.slnx --locked-mode
+          dotnet restore .\src\Yiye.App\Yiye.App.csproj --locked-mode -r win-x64 -p:PublishSingleFile=false -p:SelfContained=false
 
       - name: Build and test tagged source
         run: |
-          dotnet build .\QuietShelf.slnx --no-restore -c Release
-          dotnet test .\QuietShelf.slnx --no-build -c Release --filter "Category!=Manual&Category!=LocalData"
+          dotnet build .\Yiye.slnx --no-restore -c Release
+          dotnet test .\Yiye.slnx --no-build -c Release --filter "Category!=Manual&Category!=LocalData"
 
       - name: Build installer
         shell: pwsh
@@ -73,16 +73,16 @@ jobs:
       - name: Assemble release bundle
         shell: pwsh
         run: |
-          $version = (dotnet msbuild .\src\QuietShelf.App\QuietShelf.App.csproj -nologo -getProperty:Version).Trim()
+          $version = (dotnet msbuild .\src\Yiye.App\Yiye.App.csproj -nologo -getProperty:Version).Trim()
           $releaseDirectory = Join-Path $PWD 'artifacts\release'
           New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
-          Compress-Archive -Path '.\artifacts\win-x64\*' -DestinationPath (Join-Path $releaseDirectory "QuietShelf-$version-win-x64.zip")
+          Compress-Archive -Path '.\artifacts\win-x64\*' -DestinationPath (Join-Path $releaseDirectory "Yiye-$version-win-x64.zip")
           Copy-Item -LiteralPath ".\artifacts\installer\Yiye-Setup-$version.exe" -Destination $releaseDirectory
 
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: QuietShelf-${{ steps.project-version.outputs.value }}-${{ github.run_number }}
+          name: Yiye-${{ steps.project-version.outputs.value }}-${{ github.run_number }}
           path: artifacts/release/*
           if-no-files-found: error
           retention-days: 30

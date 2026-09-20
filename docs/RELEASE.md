@@ -18,13 +18,13 @@
 在原始电脑上创建与项目版本完全一致的标签，例如：
 
 ```powershell
-git tag -a v0.1.2 -m "QuietShelf 0.1.2"
+git tag -a v0.1.2 -m "Yiye 0.1.2"
 git push origin v0.1.2
 ```
 
 标签会触发 `Release artifacts` 工作流。工作流固定 .NET SDK 10.0.400 和 Inno Setup 6.7.3，校验安装程序下载、还原锁定依赖、检查 framework-dependent 发布目录的必要文件，并重新执行构建和自动测试，然后生成：
 
-- `QuietShelf-<版本>-win-x64.zip`
+- `Yiye-<版本>-win-x64.zip`
 - `Yiye-Setup-<版本>.exe`
 
 工作流只上传待审查的 Actions artifact，不会自动创建 GitHub Release。原始电脑下载并核对产物及安装行为后，再手动创建 Release 并上传这两个文件。
