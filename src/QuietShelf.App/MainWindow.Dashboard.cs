@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Animation;
 using QuietShelf.Models;
 
 namespace QuietShelf;
@@ -66,6 +67,7 @@ public partial class MainWindow
             DashboardRecentWorks.Add(work);
         }
         DashboardTopAuthors.Clear();
+        RecentWorkPicker.SelectedIndex = DashboardRecentWorks.Count > 0 ? 0 : -1;
         foreach (var author in _dashboardShowcase.TopAuthors)
         {
             DashboardTopAuthors.Add(author);
@@ -76,12 +78,56 @@ public partial class MainWindow
 
     private void DashboardColumns_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var stacked = e.NewSize.Width < 720;
-        Grid.SetColumnSpan(DashboardMainColumn, stacked ? 3 : 1);
-        Grid.SetColumn(DashboardSideColumn, stacked ? 0 : 2);
-        Grid.SetRow(DashboardSideColumn, stacked ? 1 : 0);
-        Grid.SetColumnSpan(DashboardSideColumn, stacked ? 3 : 1);
-        DashboardSideColumn.Margin = stacked ? new Thickness(0, 16, 0, 0) : new Thickness(0);
+        var wide = e.NewSize.Width >= 950;
+        Grid.SetColumnSpan(DashboardMainColumn, wide ? 1 : 3);
+        Grid.SetColumn(DashboardJournalSection, wide ? 2 : 0);
+        Grid.SetRow(DashboardJournalSection, wide ? 0 : 2);
+        Grid.SetColumnSpan(DashboardJournalSection, wide ? 1 : 3);
+        DashboardJournalSection.Margin = wide ? new Thickness(0, 4, 0, 0) : new Thickness(0, 14, 0, 0);
+        var stacked = e.NewSize.Width < 700;
+        Border[] rankings = [DashboardBookRanking, DashboardScreenRanking, DashboardAuthorRanking];
+        for (var index = 0; index < rankings.Length; index++)
+        {
+            Grid.SetRow(rankings[index], stacked ? index : 0);
+            Grid.SetColumn(rankings[index], stacked ? 0 : index);
+            Grid.SetColumnSpan(rankings[index], stacked ? 3 : 1);
+            rankings[index].Margin = index == 0 ? new Thickness(0)
+                : stacked ? new Thickness(0, 16, 0, 0) : new Thickness(24, 0, 0, 0);
+            rankings[index].BorderBrush = (System.Windows.Media.Brush)FindResource("DividerBrush");
+            rankings[index].BorderThickness = !stacked && index > 0 ? new Thickness(1, 0, 0, 0) : new Thickness(0);
+        }
+    }
+
+    private void SetLibraryPaneVisible(bool visible)
+    {
+        var changed = _showingLibrary != visible;
+        _showingLibrary = visible;
+        LibraryPane.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        ContentPane.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+        LibraryButton.Appearance = visible ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
+        if (changed && IsLoaded && SystemParameters.ClientAreaAnimation)
+        {
+            var page = visible ? (FrameworkElement)LibraryPane : ContentPane;
+            page.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(140))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                FillBehavior = FillBehavior.Stop
+            });
+        }
+    }
+
+    private void Library_Click(object sender, RoutedEventArgs e)
+    {
+        _selectionLoadVersion++;
+        _showingDashboard = false;
+        _selectedWorkId = null;
+        _selectedWork = null;
+        SetLibraryPaneVisible(true);
+        _isApplyingFilters = true;
+        try { WorkList.SelectedItem = null; }
+        finally { _isApplyingFilters = false; }
+        HomeButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent;
+        if (IsLoaded) SearchBox.Focus();
     }
 
     private async void DashboardWork_Open(object sender, RoutedEventArgs e)
@@ -98,6 +144,7 @@ public partial class MainWindow
         }
 
         _showingDashboard = false;
+        _showingLibrary = false;
         _selectedWorkId = workId;
         _kindFilter = "all";
         UpdateFilterButtons();

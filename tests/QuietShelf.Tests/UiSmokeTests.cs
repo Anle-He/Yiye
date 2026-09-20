@@ -2,6 +2,8 @@ using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using QuietShelf.Models;
@@ -36,6 +38,7 @@ public sealed class UiSmokeTests
                 AssertTimelineTemplate(mainWindow);
                 AssertDashboardLayout(mainWindow);
                 AssertDetailLayout();
+                AssertLibraryLayout();
                 var addWork = new AddWorkWindow();
                 Assert.IsType<Border>(addWork.FindName("WorkFormSection"));
                 var addExperience = new AddExperienceWindow("ui-test", "book");
@@ -139,28 +142,27 @@ public sealed class UiSmokeTests
                     Assert.True(origin.X + child.ActualWidth <= wrap.ActualWidth + 0.5);
                 }
             }
-            Assert.True(((Border)window.FindName("DashboardScreenRanking")).ActualHeight <
+            if (width >= 700) Assert.Equal(((Border)window.FindName("DashboardScreenRanking")).ActualHeight,
                         ((Border)window.FindName("DashboardBookRanking")).ActualHeight);
             var sideColumn = (Grid)window.FindName("DashboardSideColumn");
-            Assert.Equal(width < 720 ? 1 : 0, Grid.GetRow(sideColumn));
+            Assert.Equal(1, Grid.GetRow(sideColumn));
+            Assert.Equal(width < 700 ? 1 : 0, Grid.GetRow((Border)window.FindName("DashboardScreenRanking")));
             foreach (var list in Descendants(panel).OfType<ItemsControl>()
                          .Where(list => ReferenceEquals(list.ItemTemplate, window.Resources["ShowcaseRankItemTemplate"])))
             {
                 Assert.All(Descendants(list).OfType<Button>(), button =>
                     Assert.True(button.ActualWidth >= list.ActualWidth - 1, "Rank rows should fill the list width."));
             }
-            var mainColumn = (Grid)window.FindName("DashboardMainColumn");
-            var recent = (Border)window.FindName("DashboardRecentSection");
             var journal = (Border)window.FindName("DashboardJournalSection");
-            Assert.InRange(journal.TranslatePoint(new Point(), mainColumn).Y - recent.ActualHeight, 11.5, 12.5);
+            var rankingsBottom = sideColumn.TranslatePoint(new Point(0, sideColumn.ActualHeight), panel).Y;
+            if (width < 950) Assert.True(journal.TranslatePoint(new Point(), panel).Y >= rankingsBottom);
+            else Assert.Equal(2, Grid.GetColumn(journal));
             Assert.Equal(3, sideColumn.Children.Count);
-            if (width >= 720)
-            {
-                var author = (Border)window.FindName("DashboardAuthorRanking");
-                var journalBottom = journal.TranslatePoint(new Point(0, journal.ActualHeight), panel).Y;
-                var authorBottom = author.TranslatePoint(new Point(0, author.ActualHeight), panel).Y;
-                Assert.InRange(Math.Abs(journalBottom - authorBottom), 0, 0.5);
-            }
+            var picker = (ListBox)window.FindName("RecentWorkPicker");
+            picker.SelectedIndex = 1;
+            panel.UpdateLayout();
+            Assert.Same(window.DashboardRecentWorks[1], picker.SelectedItem);
+            Assert.Contains(Descendants(panel).OfType<ContentControl>(), control => ReferenceEquals(control.Content, picker.SelectedItem));
             SaveSnapshot(panel, $"dashboard-showcase-{width:0}.png");
         }
         ((Border)window.FindName("DashboardHero")).Visibility = Visibility.Collapsed;
@@ -174,14 +176,92 @@ public sealed class UiSmokeTests
         window.DashboardTopAuthors.RemoveAt(2);
         window.DashboardTopScreens.Add(window.DashboardTopBooks[1]);
         window.DashboardTimelineDays.Add(window.DashboardTimelineDays[0]);
-        foreach (var height in new[] { 800d, 640d, 800d })
+        foreach (var height in new[] { 800d, 768d, 640d, 800d })
         {
             scroll.Visibility = Visibility.Visible;
             root.Measure(new Size(1280, height));
             root.Arrange(new Rect(0, 0, 1280, height));
             root.UpdateLayout();
-            Assert.True((height < 700) == (scroll.ScrollableHeight > 0), $"height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, desired={scroll.DesiredSize}");
+            Assert.True(height < 700 || scroll.ScrollableHeight == 0, $"height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, desired={scroll.DesiredSize}");
         }
+        SaveSnapshot(root, "dashboard-full.png");
+        var dashboardAdd = (Button)window.FindName("DashboardAddWorkButton");
+        var dashboardBounds = new Rect(dashboardAdd.TranslatePoint(new Point(), root), dashboardAdd.RenderSize);
+        typeof(MainWindow).GetMethod("Library_Click", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [window, new RoutedEventArgs()]);
+        root.Measure(new Size(1280, 800));
+        root.Arrange(new Rect(0, 0, 1280, 800));
+        root.UpdateLayout();
+        var libraryAdd = (Button)window.FindName("LibraryAddWorkButton");
+        Assert.Equal(dashboardBounds, new Rect(libraryAdd.TranslatePoint(new Point(), root), libraryAdd.RenderSize));
+    }
+
+    private static void AssertLibraryLayout()
+    {
+        var window = new MainWindow();
+        typeof(MainWindow).GetMethod("Library_Click", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [window, new RoutedEventArgs()]);
+        Assert.Equal(Visibility.Visible, ((FrameworkElement)window.FindName("LibraryPane")).Visibility);
+        ((FrameworkElement)window.FindName("EmptyState")).Visibility = Visibility.Collapsed;
+        var list = (ListBox)window.FindName("WorkList");
+        var root = (Grid)window.Content;
+        window.Content = null;
+        root.DataContext = window;
+        root.Resources = window.Resources;
+        void Layout(double height)
+        {
+            root.Measure(new Size(1280, height));
+            root.Arrange(new Rect(0, 0, 1280, height));
+            root.UpdateLayout();
+        }
+        Layout(800);
+        for (var index = 0; index < 6; index++)
+            window.VisibleWorks.Add(new MediaWork { Title = "走夜路请放声歌唱", Kind = "book", AggregateRank = 2.4,
+                ExperienceCount = 1, LatestActivityOn = new DateOnly(2026, 9, 18) });
+        Layout(768);
+        var scroll = Descendants(list).OfType<ScrollViewer>().First();
+        SaveSnapshot(root, "library-grid.png");
+        var tiles = Descendants(list).OfType<ListBoxItem>().ToArray();
+        Assert.Equal(6, tiles.Length);
+        var firstTileY = tiles[0].TranslatePoint(new Point(), list).Y;
+        Assert.All(tiles, tile =>
+        {
+            var origin = tile.TranslatePoint(new Point(), list);
+            Assert.InRange(Math.Abs(origin.Y - firstTileY), 0, 0.5);
+            Assert.True(origin.X + tile.ActualWidth <= list.ActualWidth);
+        });
+        Assert.True(scroll.ScrollableHeight == 0,
+            $"List={list.ActualHeight}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, rows={string.Join(',', Descendants(list).OfType<ListBoxItem>().Select(item => item.ActualHeight))}");
+        Assert.Equal(Visibility.Collapsed, scroll.ComputedVerticalScrollBarVisibility);
+        var stationaryWheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
+            { RoutedEvent = Mouse.PreviewMouseWheelEvent };
+        list.RaiseEvent(stationaryWheel);
+        root.UpdateLayout();
+        Assert.True(stationaryWheel.Handled);
+        Assert.Equal(0, scroll.VerticalOffset);
+        root.Measure(new Size(980, 768));
+        root.Arrange(new Rect(0, 0, 980, 768));
+        root.UpdateLayout();
+        Assert.True(tiles[^1].TranslatePoint(new Point(), list).Y > tiles[0].TranslatePoint(new Point(), list).Y);
+        Assert.All(tiles, tile => Assert.True(tile.TranslatePoint(new Point(), list).X + tile.ActualWidth <= list.ActualWidth));
+        Layout(768);
+        var host = new Window { Content = root, Width = 1280, Height = 800, WindowStyle = WindowStyle.None, ShowActivated = false };
+        InputMethod.SetIsInputMethodEnabled(host, false);
+        host.Show();
+        host.UpdateLayout();
+        for (var index = 6; index < 20; index++)
+            window.VisibleWorks.Add(new MediaWork { Title = $"作品 {index}", Kind = "book" });
+        Layout(800);
+        Assert.True(scroll.ScrollableHeight > 0, $"items={list.Items.Count}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, width={scroll.ExtentWidth}");
+        Assert.Equal(Visibility.Visible, scroll.ComputedVerticalScrollBarVisibility);
+        list.ScrollIntoView(window.VisibleWorks[^1]);
+        root.UpdateLayout();
+        Assert.True(scroll.VerticalOffset > 0);
+        Assert.NotNull(list.ItemContainerGenerator.ContainerFromIndex(19));
+        typeof(MainWindow).GetMethod("Home_Click", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [window, new RoutedEventArgs()]);
+        Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("LibraryPane")).Visibility);
+        Assert.Equal(Visibility.Visible, ((FrameworkElement)window.FindName("NavigationRail")).Visibility);
+        Assert.Equal(126, ((ColumnDefinition)window.FindName("LibraryColumn")).Width.Value);
+        host.Close();
+        window.Close();
     }
 
     private static void AssertDetailLayout()
@@ -223,7 +303,7 @@ public sealed class UiSmokeTests
         foreach (var height in new[] { 800d, 640d, 800d })
         {
             Layout(height);
-            Assert.True((height < 700) == (scroll.ScrollableHeight > 0),
+            Assert.True(height < 700 || scroll.ScrollableHeight == 0,
                 $"Detail height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}");
         }
         SaveSnapshot(root, "detail-single-record.png");

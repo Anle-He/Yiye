@@ -20,6 +20,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private CancellationTokenSource? _searchDebounceCancellation;
     private bool _isApplyingFilters;
     private bool _showingDashboard = true;
+    private bool _showingLibrary;
 
     public MainWindow()
     {
@@ -160,6 +161,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         await ReloadDashboardAsync();
         if (selectWorkId is not null)
         {
+            _showingLibrary = false;
             _selectedWorkId = selectWorkId;
             _showingDashboard = false;
         }
@@ -178,8 +180,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
               || (work.Author?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false))).ToList();
 
 
-        var selected = _showingDashboard ? null : matches.FirstOrDefault(work => work.Id == _selectedWorkId);
-        if (!_showingDashboard && selected is null && matches.Count > 0 && string.IsNullOrWhiteSpace(query))
+        var selected = _showingDashboard || _showingLibrary ? null : matches.FirstOrDefault(work => work.Id == _selectedWorkId);
+        if (!_showingDashboard && !_showingLibrary && selected is null && matches.Count > 0 && string.IsNullOrWhiteSpace(query))
         {
             selected = matches[0];
         }
@@ -212,6 +214,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         EmptyDescription.Text = _allWorks.Count == 0
             ? "先加入一本书，或一部想留下来的影视。"
             : "换一个标题关键词或类别试试。";
+
+        if (_showingLibrary) return;
 
         if (selected is null)
         {
@@ -286,6 +290,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
 
         _selectedWork = selectedWork;
+        SetLibraryPaneVisible(false);
         _showingDashboard = false;
         DashboardScroll.Visibility = Visibility.Collapsed;
         HomeButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Secondary;
@@ -339,6 +344,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ShowDashboard()
     {
+        SetLibraryPaneVisible(false);
         _selectionLoadVersion++;
         _showingDashboard = true;
         _selectedWorkId = null;
