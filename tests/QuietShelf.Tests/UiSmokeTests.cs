@@ -115,7 +115,7 @@ public sealed class UiSmokeTests
             {
                 Date = work.LatestCompletedOn,
                 Items = [new DashboardTimelineItem { Id = $"event-{index}", WorkId = work.WorkId,
-                    Title = work.Title, Kind = "book", EventType = "completion", Metric = "duration" }]
+                    Title = work.Title, Kind = "book" }]
             });
             window.DashboardTopAuthors.Add(new DashboardAuthorRank
             {
@@ -252,12 +252,11 @@ public sealed class UiSmokeTests
             Content = new DashboardTimelineDay
             {
                 Date = new DateOnly(2026, 8, 28),
-                Items = new[] { "completion" }.Select(type => new DashboardTimelineItem
+                Items = [new DashboardTimelineItem
                 {
-                    Id = type, WorkId = "timeline-test", Title = "一本完成的书", Kind = "book",
-                    EventType = type, Metric = "duration", Amount = 30,
-                    Notes = type == "completion" ? "合上书之后，仍然记得这一段旅程。" : null
-                }).ToArray()
+                    Id = "completion", WorkId = "timeline-test", Title = "一本完成的书", Kind = "book",
+                    Notes = "合上书之后，仍然记得这一段旅程。"
+                }]
             }
         };
         presenter.Measure(new Size(presenter.Width, double.PositiveInfinity));

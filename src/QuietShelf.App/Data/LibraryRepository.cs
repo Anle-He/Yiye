@@ -131,26 +131,20 @@ public sealed partial class LibraryRepository(Database database)
         await using var connection = await OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = """
-            WITH activity AS (
-                SELECT e.id, e.work_id, e.completed_on AS event_on, 'completion' AS event_type,
-                       'completion' AS metric, 0 AS amount, e.notes, e.updated_at AS event_created
-                FROM experiences e
-                WHERE e.completed_on IS NOT NULL
-            )
-            SELECT a.id, a.work_id, w.title, w.kind, a.event_on, a.event_type,
-                   a.metric, a.amount, a.notes, a.event_created,
+            SELECT e.id, e.work_id, w.title, w.kind, e.completed_on, e.notes,
                    (SELECT c.file_name FROM work_covers c WHERE c.work_id = w.id
                     ORDER BY c.sort_order, c.created_at LIMIT 1) AS primary_cover_file
-            FROM activity a
-            JOIN works w ON w.id = a.work_id
-            ORDER BY a.event_on DESC, a.event_created DESC
+            FROM experiences e
+            JOIN works w ON w.id = e.work_id
+            WHERE e.completed_on IS NOT NULL
+            ORDER BY e.completed_on DESC, e.updated_at DESC
             LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 8));
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var primaryCoverPath = ReadCoverPath(reader, 1, 10);
+            var primaryCoverPath = ReadCoverPath(reader, 1, 6);
 
             items.Add(new DashboardTimelineItem
             {
@@ -159,12 +153,8 @@ public sealed partial class LibraryRepository(Database database)
                 Title = reader.GetString(2),
                 Kind = reader.GetString(3),
                 LoggedOn = DateOnly.Parse(reader.GetString(4), CultureInfo.InvariantCulture),
-                EventType = reader.GetString(5),
-                Metric = reader.GetString(6),
-                Amount = reader.GetInt32(7),
-                Notes = reader.IsDBNull(8) ? null : reader.GetString(8),
-                PrimaryCoverPath = primaryCoverPath,
-                IsLatest = items.Count == 0
+                Notes = reader.IsDBNull(5) ? null : reader.GetString(5),
+                PrimaryCoverPath = primaryCoverPath
             });
         }
         return items;

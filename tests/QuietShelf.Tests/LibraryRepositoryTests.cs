@@ -65,6 +65,13 @@ public sealed class LibraryRepositoryTests
         Assert.All(covers, cover => Assert.True(File.Exists(cover.FilePath)));
         Assert.False(string.IsNullOrWhiteSpace(storedWork?.PrimaryCoverPath));
 
+        await context.Repository.AddExperienceAsync(new MediaExperience
+        {
+            WorkId = work.Id, CompletedOn = new DateOnly(2026, 8, 26)
+        });
+        var timelineItem = Assert.Single(await context.Repository.GetRecentTimelineAsync());
+        Assert.Equal(covers[0].FilePath, timelineItem.PrimaryCoverPath);
+
         await context.Repository.SetPrimaryCoverAsync(work.Id, covers[1].Id);
         var reordered = await context.Repository.GetCoversAsync(work.Id);
         Assert.Equal(covers[1].Id, reordered[0].Id);
@@ -156,16 +163,37 @@ public sealed class LibraryRepositoryTests
         {
             WorkId = book.Id,
             StartedOn = new DateOnly(2026, 8, 21),
-            CompletedOn = new DateOnly(2026, 8, 26)
+            CompletedOn = new DateOnly(2026, 8, 26),
+            Notes = "一次阅读的记录"
         };
         await context.Repository.AddExperienceAsync(reading);
 
         var timeline = await context.Repository.GetRecentTimelineAsync();
 
         var item = Assert.Single(timeline);
-        Assert.True(item.IsLatest);
+        Assert.Equal(reading.Id, item.Id);
+        Assert.Equal(reading.CompletedOn, item.LoggedOn);
+        Assert.Equal(reading.Notes, item.Notes);
+        Assert.Null(item.PrimaryCoverPath);
         Assert.Equal(book.Id, item.WorkId);
         Assert.Equal("完成一次阅读", item.ActionLabel);
+
+        var completedViewing = new MediaExperience
+        {
+            WorkId = screen.Id, CompletedOn = new DateOnly(2026, 8, 27),
+            UpdatedAt = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero)
+        };
+        var repeatedViewing = new MediaExperience
+        {
+            WorkId = screen.Id, CompletedOn = completedViewing.CompletedOn,
+            UpdatedAt = completedViewing.UpdatedAt.AddHours(1)
+        };
+        await context.Repository.AddExperienceAsync(completedViewing);
+        await context.Repository.AddExperienceAsync(repeatedViewing);
+        var recent = await context.Repository.GetRecentTimelineAsync(2);
+        Assert.Equal(new[] { repeatedViewing.Id, completedViewing.Id }, recent.Select(entry => entry.Id));
+        Assert.All(recent, entry => Assert.Equal("完成一次观看", entry.ActionLabel));
+        Assert.All(recent, entry => Assert.Null(entry.Notes));
     }
 
     [Fact]
@@ -230,7 +258,7 @@ public sealed class LibraryRepositoryTests
         Assert.Equal(RatingScale.RankMaximum, aggregate.AggregateRank);
         Assert.Equal(completedOn, aggregate.LatestActivityOn);
         var latest = Assert.Single(await context.Repository.GetRecentTimelineAsync(1));
-        Assert.Equal("completion", latest.EventType);
+        Assert.Equal(experience.Id, latest.Id);
         Assert.Equal(completedOn, latest.LoggedOn);
         await context.Repository.DeleteExperienceAsync(experience.Id, work.Id);
         Assert.Empty(await context.Repository.GetRecentTimelineAsync());
