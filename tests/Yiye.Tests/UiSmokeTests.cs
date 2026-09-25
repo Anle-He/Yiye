@@ -81,6 +81,9 @@ public sealed class UiSmokeTests
                 SnapshotWindow(addWork, "add-work.png");
                 SnapshotWindow(addExperience, "add-experience.png");
 
+                AssertExplicitWorkSelection(context);
+                AssertCoverLoadFailure(context, application);
+
                 addExperience.Close();
                 addWork.Close();
                 mainWindow.Close();
@@ -98,6 +101,70 @@ public sealed class UiSmokeTests
         if (failure is not null)
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+    }
+
+    private static void AssertExplicitWorkSelection(TempDatabase context)
+    {
+        var book = new MediaWork { Title = "existing-book", Kind = "book" };
+        var screen = new MediaWork { Title = "new-screen", Kind = "screen" };
+        context.Repository.AddWorkAsync(book).GetAwaiter().GetResult();
+        context.Repository.AddWorkAsync(screen).GetAwaiter().GetResult();
+        var window = new MainWindow();
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        typeof(MainWindow).GetField("_repository", flags)!.SetValue(window, context.Repository);
+        var filter = typeof(MainWindow).GetField("_kindFilter", flags)!;
+        var reload = typeof(MainWindow).GetMethod("ReloadLibraryAsync", flags)!;
+        try
+        {
+            foreach (var (kind, target) in new[] { ("book", screen), ("screen", book), ("book", book) })
+            {
+                filter.SetValue(window, kind);
+                ((Task)reload.Invoke(window, [target.Id])!).GetAwaiter().GetResult();
+                Assert.Equal(target.Id, Assert.IsType<MediaWork>(typeof(MainWindow).GetField("_selectedWork", flags)!.GetValue(window)).Id);
+                Assert.Contains(window.VisibleWorks, work => work.Id == target.Id);
+                Assert.Equal(target.Title, ((TextBlock)window.FindName("DetailTitleText")).Text);
+                Assert.Equal(kind == target.Kind ? kind : "all", filter.GetValue(window));
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    private static void AssertCoverLoadFailure(TempDatabase context, Application application)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(context.Database.ConnectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "ALTER TABLE work_covers RENAME TO unavailable_covers;";
+        command.ExecuteNonQuery();
+        var window = new ManageCoversWindow(context.Repository, new MediaWork { Title = "load-failure", Kind = "book" });
+        var previousContext = SynchronizationContext.Current;
+        Exception? unhandled = null;
+        DispatcherUnhandledExceptionEventHandler handler = (_, e) => { unhandled = e.Exception; e.Handled = true; };
+        application.DispatcherUnhandledException += handler;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(application.Dispatcher));
+        try
+        {
+            window.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            var frame = new DispatcherFrame();
+            application.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            Assert.Null(unhandled);
+            Assert.StartsWith("无法加载封面：", ((TextBlock)window.FindName("CoverCountText")).Text);
+            Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("EmptyState")).Visibility);
+            Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("CoverScroll")).Visibility);
+
+            command.CommandText = "ALTER TABLE unavailable_covers RENAME TO work_covers;";
+            command.ExecuteNonQuery();
+            window.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            Assert.Equal(Visibility.Visible, ((FrameworkElement)window.FindName("EmptyState")).Visibility);
+            Assert.DoesNotContain("无法加载封面", ((TextBlock)window.FindName("CoverCountText")).Text);
+        }
+        finally
+        {
+            application.DispatcherUnhandledException -= handler;
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+            window.Close();
         }
     }
 

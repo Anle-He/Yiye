@@ -20,7 +20,19 @@ public partial class ManageCoversWindow : Window
         _work = work;
         InitializeComponent();
         DataContext = this;
-        Loaded += async (_, _) => await ReloadAsync();
+        Loaded += async (_, _) =>
+        {
+            try
+            {
+                await ReloadAsync();
+            }
+            catch (Exception exception)
+            {
+                CoverCountText.Text = $"无法加载封面：{exception.Message}";
+                EmptyState.Visibility = Visibility.Collapsed;
+                CoverScroll.Visibility = Visibility.Collapsed;
+            }
+        };
     }
 
     public ObservableCollection<WorkCover> Covers { get; } = [];

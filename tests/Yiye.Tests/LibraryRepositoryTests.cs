@@ -8,6 +8,62 @@ namespace Yiye.Tests;
 public sealed class LibraryRepositoryTests
 {
     [Fact]
+    public async Task DeleteWork_ReadOnlyCover_DoesNotReportCommittedDeletionAsFailure()
+    {
+        await using var context = await TempDatabase.CreateAsync();
+        var work = new MediaWork { Title = "read-only-cover", Kind = "book" };
+        await context.Repository.AddWorkAsync(work);
+        await context.Repository.AddExperienceAsync(new MediaExperience
+        {
+            WorkId = work.Id, CompletedOn = new DateOnly(2026, 9, 25)
+        });
+        var directory = context.Database.GetCoverDirectory(work.Id);
+        Directory.CreateDirectory(directory);
+        var coverPath = Path.Combine(directory, "cover.jpg");
+        await File.WriteAllTextAsync(coverPath, "read-only cleanup fixture");
+        File.SetAttributes(coverPath, FileAttributes.ReadOnly);
+        try
+        {
+            await context.Repository.DeleteWorkAsync(work.Id);
+
+            Assert.Null(await context.Repository.GetWorkAsync(work.Id));
+            Assert.Empty(await context.Repository.GetExperiencesAsync(work.Id));
+            Assert.False(Directory.Exists(directory));
+            var staged = Assert.Single(Directory.GetDirectories(context.Database.CoversDirectory));
+            Assert.StartsWith(directory + ".deleting-", staged);
+            Assert.True(File.Exists(Path.Combine(staged, "cover.jpg")));
+        }
+        finally
+        {
+            foreach (var file in Directory.EnumerateFiles(context.Database.CoversDirectory, "*", SearchOption.AllDirectories))
+                File.SetAttributes(file, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteWork_DatabaseFailure_RestoresCoversAndPropagatesError()
+    {
+        await using var context = await TempDatabase.CreateAsync();
+        var work = new MediaWork { Title = "failed-deletion", Kind = "book" };
+        await context.Repository.AddWorkAsync(work);
+        var directory = context.Database.GetCoverDirectory(work.Id);
+        Directory.CreateDirectory(directory);
+        var coverPath = Path.Combine(directory, "cover.jpg");
+        await File.WriteAllTextAsync(coverPath, "rollback fixture");
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(context.Database.ConnectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TRIGGER reject_delete BEFORE DELETE ON works BEGIN SELECT RAISE(ABORT, 'test failure'); END;";
+        command.ExecuteNonQuery();
+
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => context.Repository.DeleteWorkAsync(work.Id));
+
+        Assert.NotNull(await context.Repository.GetWorkAsync(work.Id));
+        Assert.Equal("rollback fixture", await File.ReadAllTextAsync(coverPath));
+        Assert.Single(Directory.GetDirectories(context.Database.CoversDirectory));
+    }
+
+    [Fact]
     public async Task ScreenWork_DoesNotPersistBookAuthor()
     {
         await using var context = await TempDatabase.CreateAsync();

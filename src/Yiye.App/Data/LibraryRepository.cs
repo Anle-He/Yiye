@@ -360,20 +360,21 @@ public sealed partial class LibraryRepository(Database database)
             }
             throw;
         }
-        if (Directory.Exists(temporaryDirectory))
+        try
         {
-            Directory.Delete(temporaryDirectory, recursive: true);
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
         }
-    }
-
-    private static async Task TouchWorkAsync(SqliteConnection connection, SqliteTransaction transaction, string workId, DateTimeOffset updatedAt)
-    {
-        var update = connection.CreateCommand();
-        update.Transaction = transaction;
-        update.CommandText = "UPDATE works SET updated_at=$updatedAt WHERE id=$workId;";
-        update.Parameters.AddWithValue("$updatedAt", updatedAt.ToString("O"));
-        update.Parameters.AddWithValue("$workId", workId);
-        await update.ExecuteNonQueryAsync();
+        catch (IOException)
+        {
+            // The database deletion has committed; leftover covers must not prevent the UI refresh.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // The database deletion has committed; leftover covers must not prevent the UI refresh.
+        }
     }
 
     private static async Task RefreshWorkStatusAsync(

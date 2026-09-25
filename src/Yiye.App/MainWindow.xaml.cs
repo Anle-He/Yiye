@@ -161,6 +161,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         await ReloadDashboardAsync();
         if (selectWorkId is not null)
         {
+            var target = _allWorks.FirstOrDefault(work => work.Id == selectWorkId);
+            if (target is not null && _kindFilter != "all" && _kindFilter != target.Kind)
+            {
+                _kindFilter = "all";
+                UpdateFilterButtons();
+            }
             _showingLibrary = false;
             _selectedWorkId = selectWorkId;
             _showingDashboard = false;
