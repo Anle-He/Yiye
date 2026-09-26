@@ -168,11 +168,11 @@
                     <Border x:Name="EmptyState" Padding="24"><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="EmptyTitle" Text="这里还没有作品" FontSize="20"/><TextBlock x:Name="EmptyDescription" Text="添加一本书或一部影视" Margin="0,12"/><ui:Button Content="收录作品" Click="AddWork_Click"/></StackPanel></Border>
                     <ListBox x:Name="WorkList" ItemsSource="{Binding VisibleWorks}" Background="Transparent" BorderThickness="0" Padding="0" SelectionChanged="WorkList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="False" behaviors:SmoothScroll.IsEnabled="True">
                         <ListBox.ItemsPanel><ItemsPanelTemplate><shelf:LibraryShelfPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
-                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Paper" Padding="12" Background="{StaticResource SurfaceBrush}" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Paper" Padding="8" Background="{StaticResource SurfaceBrush}" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel>
-                                    <Grid Height="144">
+                                    <Grid Height="144" HorizontalAlignment="Center" MinWidth="90">
                                         <TextBlock Text="{Binding KindGlyph}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    FontSize="28" Foreground="{StaticResource MutedBrush}">
                                             <TextBlock.Style>
@@ -185,7 +185,22 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <Image Source="{Binding PrimaryCoverPath, Converter={StaticResource CoverImageConverter}, ConverterParameter=300}" Stretch="Uniform"/>
+                                        <Image x:Name="ShelfCover" Source="{Binding PrimaryCoverPath, Converter={StaticResource CoverImageConverter}, ConverterParameter=300}" Stretch="Uniform" MaxHeight="144"/>
+                                        <Border x:Name="CoverRatingBadge" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                Margin="0,0,4,5" Padding="6,2" CornerRadius="4" Background="#F5FFFCF3"
+                                                BorderBrush="#40FFFFFF" BorderThickness="1" ToolTip="{Binding AggregateRatingMarkLabel}">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasAggregateRank}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="CoverRatingStar" Text="★" Foreground="#A95F32" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock Text="{Binding AggregateRankValueLabel}" Foreground="#243C31" FontSize="13" FontWeight="SemiBold"/>
+                                            </StackPanel>
+                                        </Border>
                                     </Grid>
                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding Title}" Margin="0,8,0,0"/>
@@ -200,9 +215,12 @@
                                             </Style>
                                         </TextBlock.Style>
                                     </TextBlock>
-                                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource WorkRatingMarkTemplate}"
-                                                    HorizontalAlignment="Left" Margin="0,6,0,0"/>
+
                                 </StackPanel>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding AggregateScoreTier}" Value="gold"><Setter TargetName="CoverRatingStar" Property="Foreground" Value="#B88520"/></DataTrigger>
+                                    <DataTrigger Binding="{Binding AggregateScoreTier}" Value="silver"><Setter TargetName="CoverRatingStar" Property="Foreground" Value="#78848C"/></DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

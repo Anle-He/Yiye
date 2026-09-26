@@ -6,7 +6,7 @@ namespace Yiye.Controls;
 /// <summary>Fits equal-width cover tiles to the available shelf width.</summary>
 public sealed class LibraryShelfPanel : Panel
 {
-    private const double MinimumTileWidth = 168;
+    private const double MinimumTileWidth = 144;
     private double _rowHeight;
 
     private static int Columns(double width) => Math.Max(1, (int)(width / MinimumTileWidth));
