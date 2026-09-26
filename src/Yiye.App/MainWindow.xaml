@@ -163,10 +163,107 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><ui:Button x:Name="AllFilterButton" Content="全部" Tag="all" Click="Filter_Click" Appearance="Primary"/><ui:Button x:Name="BookFilterButton" Content="书籍" Tag="book" Click="Filter_Click" Margin="8,0"/><ui:Button x:Name="ScreenFilterButton" Content="影视" Tag="screen" Click="Filter_Click"/></StackPanel>
                     <ui:TextBox x:Name="SearchBox" Grid.Column="1" PlaceholderText="搜索标题、副标题或作者" TextChanged="SearchBox_TextChanged"/>
                 </Grid>
-                <Grid x:Name="RegularWorksHeader" Grid.Row="2" Margin="0,0,0,16"><TextBlock Text="按最近记录" FontSize="11" Foreground="{StaticResource MutedBrush}"/></Grid>
+                <Grid x:Name="RegularWorksHeader" Grid.Row="2" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <ui:Button x:Name="MonthBackButton" Content="返回月份" Icon="{ui:SymbolIcon ArrowLeft24}"
+                               Click="CloseLibraryMonth_Click" Appearance="Transparent" Visibility="Collapsed" Margin="0,0,12,0"/>
+                    <TextBlock x:Name="LibraryMonthHeading" Grid.Column="1" Text="按最近记录月份 · 点击卡叠展开"
+                               FontSize="12" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                </Grid>
                 <Grid Grid.Row="3">
                     <Border x:Name="EmptyState" Padding="24"><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="EmptyTitle" Text="这里还没有作品" FontSize="20"/><TextBlock x:Name="EmptyDescription" Text="添加一本书或一部影视" Margin="0,12"/><ui:Button Content="收录作品" Click="AddWork_Click"/></StackPanel></Border>
-                    <ListBox x:Name="WorkList" ItemsSource="{Binding VisibleWorks}" Background="Transparent" BorderThickness="0" Padding="0" SelectionChanged="WorkList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="False" behaviors:SmoothScroll.IsEnabled="True">
+                    <ScrollViewer x:Name="MonthOverview" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled" behaviors:SmoothScroll.IsEnabled="True">
+                        <ItemsControl x:Name="MonthList" ItemsSource="{Binding LibraryMonths}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button x:Name="MonthDeckButton" Width="230" Margin="0,0,18,18"
+                                            Padding="8" Tag="{Binding}" Click="OpenLibraryMonth_Click"
+                                            ToolTip="{Binding OpenLabel}" AutomationProperties.Name="{Binding OpenLabel}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Cursor" Value="Hand"/>
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="DeckSurface" Padding="{TemplateBinding Padding}"
+                                                                    Background="{TemplateBinding Background}" CornerRadius="14"
+                                                                    BorderThickness="1" BorderBrush="Transparent">
+                                                                <ContentPresenter/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="DeckSurface" Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                                                    <Setter TargetName="DeckSurface" Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                                                    <Setter TargetName="DeckSurface" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsPressed" Value="True">
+                                                                    <Setter TargetName="DeckSurface" Property="Opacity" Value="0.8"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                        <StackPanel>
+                                            <ItemsControl ItemsSource="{Binding PreviewCards}" Width="210" Height="190" IsHitTestVisible="False">
+                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemContainerStyle>
+                                                    <Style TargetType="ContentPresenter">
+                                                        <Setter Property="Canvas.Left" Value="{Binding Left}"/>
+                                                        <Setter Property="Canvas.Top" Value="{Binding Top}"/>
+                                                        <Setter Property="Panel.ZIndex" Value="{Binding Layer}"/>
+                                                    </Style>
+                                                </ItemsControl.ItemContainerStyle>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Width="108" Height="148" Padding="3" CornerRadius="4"
+                                                                Background="{StaticResource SurfaceBrush}" BorderBrush="#D6DCD6"
+                                                                BorderThickness="1" RenderTransformOrigin="0.5,0.8">
+                                                            <Border.RenderTransform><RotateTransform Angle="{Binding Angle}"/></Border.RenderTransform>
+                                                            <Border.Effect><DropShadowEffect BlurRadius="9" ShadowDepth="3" Opacity="0.17" Color="#243C31"/></Border.Effect>
+                                                            <Grid>
+                                                                <StackPanel VerticalAlignment="Center" Margin="8">
+                                                                    <StackPanel.Style>
+                                                                        <Style TargetType="StackPanel">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Source, ElementName=MonthCover}" Value="{x:Null}">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </StackPanel.Style>
+                                                                    <TextBlock Text="{Binding Work.KindGlyph}" FontFamily="SimSun" FontSize="28"
+                                                                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                                                                    <TextBlock Text="{Binding Work.Title}" FontSize="10" Margin="0,8,0,0"
+                                                                               TextAlignment="Center" TextWrapping="Wrap" MaxHeight="42"/>
+                                                                </StackPanel>
+                                                                <Image x:Name="MonthCover" Source="{Binding Work.PrimaryCoverPath, Converter={StaticResource CoverImageConverter}, ConverterParameter=300}"
+                                                                       Stretch="Uniform"/>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <Grid Margin="10,2,10,0">
+                                                <TextBlock Text="{Binding Label}" FontSize="17" FontWeight="SemiBold"/>
+                                                <TextBlock Text="↗" FontSize="18" HorizontalAlignment="Right" Foreground="{StaticResource AccentBrush}"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding CountLabel}" Margin="10,5,10,6" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <ListBox x:Name="WorkList" Visibility="Collapsed" ItemsSource="{Binding ExpandedMonthWorks}" Background="Transparent" BorderThickness="0" Padding="0" SelectionChanged="WorkList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="False" behaviors:SmoothScroll.IsEnabled="True">
                         <ListBox.ItemsPanel><ItemsPanelTemplate><shelf:LibraryShelfPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
                         <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Paper" Padding="8" Background="{StaticResource SurfaceBrush}" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>

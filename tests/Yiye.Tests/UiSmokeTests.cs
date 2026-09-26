@@ -39,6 +39,7 @@ public sealed class UiSmokeTests
                 AssertDashboardLayout(mainWindow);
                 AssertDetailLayout();
                 AssertLibraryLayout();
+                AssertMonthFiltering();
                 var addWork = new AddWorkWindow();
                 Assert.IsType<Border>(addWork.FindName("WorkFormSection"));
                 var addExperience = new AddExperienceWindow("ui-test", "book");
@@ -283,7 +284,20 @@ public sealed class UiSmokeTests
         for (var index = 0; index < 6; index++)
             window.VisibleWorks.Add(new MediaWork { Title = "走夜路请放声歌唱", Kind = "book", AggregateRank = 2.4,
                 ExperienceCount = 1, LatestActivityOn = new DateOnly(2026, 9, 18) });
+        var refreshMonths = typeof(MainWindow).GetMethod("RefreshLibraryMonths", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        refreshMonths.Invoke(window, [null]);
         Layout(768);
+        Assert.Single(window.LibraryMonths);
+        Assert.Equal(Visibility.Collapsed, list.Visibility);
+        var monthOverview = (ScrollViewer)window.FindName("MonthOverview");
+        Assert.Equal(Visibility.Visible, monthOverview.Visibility);
+        SaveSnapshot(root, "library-months.png");
+        var monthButton = Descendants(monthOverview).OfType<Button>().Single(button => button.Name == "MonthDeckButton");
+        monthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Layout(768);
+        Assert.Equal(Visibility.Collapsed, monthOverview.Visibility);
+        Assert.Equal(Visibility.Visible, list.Visibility);
+        Assert.Equal(6, window.ExpandedMonthWorks.Count);
         var scroll = Descendants(list).OfType<ScrollViewer>().First();
         SaveSnapshot(root, "library-grid.png");
         var tiles = Descendants(list).OfType<ListBoxItem>().ToArray();
@@ -315,19 +329,64 @@ public sealed class UiSmokeTests
         host.Show();
         host.UpdateLayout();
         for (var index = 6; index < 20; index++)
-            window.VisibleWorks.Add(new MediaWork { Title = $"作品 {index}", Kind = "book" });
+            window.VisibleWorks.Add(new MediaWork { Title = $"作品 {index}", Kind = "book", LatestActivityOn = new DateOnly(2026, 9, 18) });
+        refreshMonths.Invoke(window, [null]);
         Layout(800);
         Assert.True(scroll.ScrollableHeight > 0, $"items={list.Items.Count}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, width={scroll.ExtentWidth}");
         Assert.Equal(Visibility.Visible, scroll.ComputedVerticalScrollBarVisibility);
-        list.ScrollIntoView(window.VisibleWorks[^1]);
+        list.ScrollIntoView(window.ExpandedMonthWorks[^1]);
         root.UpdateLayout();
         Assert.True(scroll.VerticalOffset > 0);
         Assert.NotNull(list.ItemContainerGenerator.ContainerFromIndex(19));
+        ((Button)window.FindName("MonthBackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Layout(800);
+        Assert.Equal(Visibility.Visible, monthOverview.Visibility);
+        Assert.Equal(Visibility.Collapsed, list.Visibility);
+        Assert.Empty(window.ExpandedMonthWorks);
+        Assert.Equal(20, Assert.Single(window.LibraryMonths).Works.Count);
         typeof(MainWindow).GetMethod("Home_Click", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [window, new RoutedEventArgs()]);
         Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("LibraryPane")).Visibility);
         Assert.Equal(Visibility.Visible, ((FrameworkElement)window.FindName("NavigationRail")).Visibility);
         Assert.Equal(126, ((ColumnDefinition)window.FindName("LibraryColumn")).Width.Value);
         host.Close();
+        window.Close();
+    }
+
+    private static void AssertMonthFiltering()
+    {
+        var window = new MainWindow();
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        typeof(MainWindow).GetMethod("Library_Click", flags)!.Invoke(window, [window, new RoutedEventArgs()]);
+        var book = new MediaWork { Title = "September book", Author = "Writer", Kind = "book", LatestActivityOn = new DateOnly(2026, 9, 20) };
+        var screen = new MediaWork { Title = "August screen", Kind = "screen", LatestActivityOn = new DateOnly(2026, 8, 20) };
+        var undated = new MediaWork { Title = "Unrecorded", Kind = "book" };
+        typeof(MainWindow).GetField("_allWorks", flags)!.SetValue(window, new MediaWork[] { book, screen, undated });
+        void Filter() => ((Task)typeof(MainWindow).GetMethod("ApplyFiltersAsync", flags)!.Invoke(window, [false])!).GetAwaiter().GetResult();
+        Filter();
+        Assert.Equal(3, window.LibraryMonths.Count);
+        var september = window.LibraryMonths[0];
+        typeof(MainWindow).GetMethod("OpenLibraryMonth_Click", flags)!.Invoke(window, [new Button { Tag = september }, new RoutedEventArgs()]);
+        Assert.Same(book, Assert.Single(window.ExpandedMonthWorks));
+
+        var search = (Wpf.Ui.Controls.TextBox)window.FindName("SearchBox");
+        search.Text = "Writer";
+        Filter();
+        Assert.Same(book, Assert.Single(Assert.Single(window.LibraryMonths).Works));
+        Assert.Empty(window.ExpandedMonthWorks);
+        Assert.Equal(Visibility.Visible, ((ScrollViewer)window.FindName("MonthOverview")).Visibility);
+
+        search.Text = "";
+        typeof(MainWindow).GetField("_kindFilter", flags)!.SetValue(window, "screen");
+        Filter();
+        Assert.Same(screen, Assert.Single(Assert.Single(window.LibraryMonths).Works));
+
+        search.Text = "missing";
+        Filter();
+        Assert.Empty(window.LibraryMonths);
+        Assert.Empty(window.ExpandedMonthWorks);
+        Assert.Equal(Visibility.Visible, ((FrameworkElement)window.FindName("EmptyState")).Visibility);
+        Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("MonthOverview")).Visibility);
+        Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("WorkList")).Visibility);
         window.Close();
     }
 

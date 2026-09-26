@@ -178,6 +178,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private async Task ApplyFiltersAsync(bool reloadSelected = false)
     {
         var query = SearchBox?.Text.Trim() ?? string.Empty;
+        if (_libraryMonthFilter != (_kindFilter, query))
+        {
+            _expandedMonthKey = null;
+            _libraryMonthFilter = (_kindFilter, query);
+        }
         var matches = _allWorks.Where(work =>
             (_kindFilter == "all" || work.Kind == _kindFilter) &&
              (string.IsNullOrWhiteSpace(query)
@@ -201,6 +206,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 VisibleWorks.Add(work);
             }
 
+            RefreshLibraryMonths(selected?.Id);
             WorkList.SelectedItem = selected;
         }
         finally
@@ -215,7 +221,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         LibraryCountText.Text = $"{_allWorks.Count} 部作品";
         RegularWorksHeader.Visibility = matches.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         EmptyState.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        WorkList.Visibility = matches.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
         EmptyTitle.Text = _allWorks.Count == 0 ? "这里还没有作品" : "没有找到相符的作品";
         EmptyDescription.Text = _allWorks.Count == 0
             ? "先加入一本书，或一部想留下来的影视。"
