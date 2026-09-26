@@ -40,7 +40,7 @@
                                    HorizontalAlignment="Center" />
                         <TextBlock Text="不同版本可以保留不同封面，并按喜欢的顺序陈列。" Margin="0,7,0,18"
                                    Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
-                        <ui:Button Content="选择图片" Appearance="Primary" Icon="{ui:SymbolIcon Add24}"
+                        <ui:Button Content="选择图片" HorizontalAlignment="Center" Appearance="Primary" Icon="{ui:SymbolIcon Add24}"
                                    Click="AddCovers_Click" />
                     </StackPanel>
                 </Border>
