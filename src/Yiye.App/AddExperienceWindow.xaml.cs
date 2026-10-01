@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using Yiye.Models;
 
 namespace Yiye;
@@ -122,8 +123,20 @@ public partial class AddExperienceWindow : Window
         RankPreview.Text = $"{rank:0.0} / {RatingScale.RankMaximum:0.0}";
     }
 
+    private static void RatingBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ComboBox box) return;
+        box.ApplyTemplate();
+        if (box.Template.FindName("ToggleButton", box) is ToggleButton toggle)
+        {
+            // Finish the opening click before the popup can receive a mouse release.
+            toggle.ClickMode = ClickMode.Release;
+        }
+    }
+
     private static void PopulateRatingBox(ComboBox box, int maximum)
     {
+        box.Loaded += RatingBox_Loaded;
         box.Items.Add(new ComboBoxItem { Content = "不设置", Tag = string.Empty });
         for (var score = RatingScale.Minimum; score <= maximum; score++)
         {

@@ -61,9 +61,11 @@ public sealed class UiSmokeTests
                 var editExperience = new AddExperienceWindow("ui-test", "book", new MediaExperience
                 {
                     WorkId = "ui-test",
-                    CompletedOn = new DateOnly(2026, 8, 29)
+                    CompletedOn = new DateOnly(2026, 8, 29),
+                    Illumination = 4
                 });
                 Assert.Equal(Visibility.Visible, Assert.IsAssignableFrom<Button>(editExperience.FindName("DeleteButton")).Visibility);
+                AssertRatingPopupOpening(editExperience, editing: true);
                 editExperience.Close();
 
                 var covers = new ManageCoversWindow(context.Repository, new Yiye.Models.MediaWork
@@ -81,6 +83,7 @@ public sealed class UiSmokeTests
 
                 SnapshotWindow(addWork, "add-work.png");
                 SnapshotWindow(addExperience, "add-experience.png");
+                AssertRatingPopupOpening(addExperience, editing: false);
 
                 AssertExplicitWorkSelection(context);
                 AssertCoverLoadFailure(context, application);
@@ -103,6 +106,43 @@ public sealed class UiSmokeTests
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
+
+    private static void AssertRatingPopupOpening(AddExperienceWindow window, bool editing)
+    {
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = SystemParameters.WorkArea.Left + 30;
+        window.Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - window.Height);
+        window.Show();
+        window.Activate();
+        window.UpdateLayout();
+        foreach (var name in new[] { "AllureBox", "ImmersionBox", "RationalityBox", "IlluminationBox" })
+        {
+            var box = Assert.IsType<ComboBox>(window.FindName(name));
+            box.BringIntoView();
+            window.UpdateLayout();
+            box.Focus();
+            var expected = editing && name == "IlluminationBox" ? 4 : 0;
+            Assert.Equal(expected, box.SelectedIndex);
+            var toggle = Assert.IsType<System.Windows.Controls.Primitives.ToggleButton>(box.Template.FindName("ToggleButton", box));
+            Assert.Equal(ClickMode.Release, toggle.ClickMode);
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                box.IsDropDownOpen = true;
+                Assert.True(box.IsDropDownOpen, $"{name}: loaded={box.IsLoaded}, visible={box.IsVisible}, enabled={box.IsEnabled}, items={box.Items.Count}, toggle={toggle.IsChecked}, active={window.IsActive}, capture={Mouse.Captured}, source={PresentationSource.FromVisual(box)}");
+                window.UpdateLayout();
+                Assert.True(box.IsDropDownOpen);
+                Assert.Equal(expected, box.SelectedIndex);
+                box.IsDropDownOpen = false;
+            }
+            box.SelectedIndex = 2;
+            box.IsDropDownOpen = true;
+            window.UpdateLayout();
+            Assert.Equal(2, box.SelectedIndex);
+            box.IsDropDownOpen = false;
+            box.SelectedIndex = expected;
+        }
+        window.Hide();
     }
 
     private static void AssertExplicitWorkSelection(TempDatabase context)
