@@ -288,10 +288,35 @@ public sealed class LibraryRepositoryTests
         Assert.Equal(new DateOnly(2026, 1, 2), showcase.CompletedWorks.Single(work => work.WorkId == alpha.Id).FirstCompletedOn);
         Assert.Equal(2, showcase.TopAuthors.Count);
         Assert.Equal([1, 2], showcase.TopAuthors.Select(author => author.Position));
-        Assert.All(showcase.TopAuthors, author => Assert.InRange(author.WeightedRank, 0, RatingScale.RankMaximum));
+        Assert.All(showcase.TopAuthors, author => Assert.InRange(author.WeightedRank, 0, DashboardAuthorRank.ScoreMaximum));
         Assert.Equal(3, showcase.TopAuthors.Single(author => author.Author == "Beta").RatingCount);
+        Assert.Equal(4.6, showcase.TopAuthors.Single(author => author.Author == "Alpha").WeightedRank);
+        Assert.Equal(4.3, showcase.TopAuthors.Single(author => author.Author == "Beta").WeightedRank);
+        Assert.Equal(3.9, showcase.CompletedWorks.Single(work => work.WorkId == alpha.Id).AggregateRank);
+        Assert.Equal(3.3, showcase.CompletedWorks.Single(work => work.WorkId == beta.Id).AggregateRank);
     }
 
+    [Fact]
+    public async Task AuthorRank_UsesFivePointMaximumWhileWorkAndExperienceRemainOnOriginalScale()
+    {
+        await using var context = await TempDatabase.CreateAsync();
+        var work = new MediaWork { Title = "Perfect book", Author = "Perfect author", Kind = "book" };
+        await context.Repository.AddWorkAsync(work);
+        var experience = new MediaExperience
+        {
+            WorkId = work.Id, CompletedOn = new DateOnly(2026, 10, 1),
+            Allure = 3, Immersion = 5, Rationality = 5, Illumination = 5
+        };
+        await context.Repository.AddExperienceAsync(experience);
+
+        var showcase = await context.Repository.GetDashboardShowcaseAsync();
+
+        Assert.Equal(5.0, Assert.Single(showcase.TopAuthors).WeightedRank);
+        Assert.Contains("满分 5.0", Assert.Single(showcase.TopAuthors).EvidenceLabel);
+        Assert.Equal(3.9, Assert.Single(showcase.CompletedWorks).AggregateRank);
+        Assert.Equal(3.9, experience.Rank);
+        Assert.Equal(3.9, (await context.Repository.GetWorkAsync(work.Id))!.AggregateRank);
+    }
     [Fact]
     public async Task DashboardTimeline_TracksCompletionsWithoutInflatingWorkTotals()
     {

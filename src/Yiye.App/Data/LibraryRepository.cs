@@ -240,7 +240,8 @@ public sealed partial class LibraryRepository(Database database)
                     Author = reader.GetString(0),
                     WorkCount = reader.GetInt32(1),
                     RatingCount = reader.GetInt32(2),
-                    WeightedRank = Math.Round(reader.GetDouble(3), 1, MidpointRounding.AwayFromZero)
+                    WeightedRank = Math.Round(reader.GetDouble(3) * DashboardAuthorRank.ScoreMaximum / RatingScale.RankMaximum,
+                        1, MidpointRounding.AwayFromZero)
                 });
             }
         }
