@@ -11,7 +11,7 @@ public partial class AddExperienceWindow : Window
     private readonly string _kind;
     private readonly MediaExperience? _existing;
 
-    public AddExperienceWindow(string workId, string kind, MediaExperience? existing = null)
+    public AddExperienceWindow(string workId, string kind, MediaExperience? existing = null, IReadOnlyList<HistoricalProgressEntry>? progress = null)
     {
         _workId = workId;
         _kind = kind;
@@ -38,7 +38,14 @@ public partial class AddExperienceWindow : Window
         SetRating(IlluminationBox, existing?.Illumination);
         CompletionPanel.Visibility = Visibility.Visible;
         SaveButton.Content = editingCompleted ? "保存修改" : "保存完成记录";
-        DeleteButton.Visibility = editingCompleted ? Visibility.Visible : Visibility.Collapsed;
+        DeleteButton.Visibility = existing is not null ? Visibility.Visible : Visibility.Collapsed;
+        if (existing is not null && !editingCompleted)
+        {
+            HeadingText.Text = kind == "book" ? "完成这次阅读" : "完成这次观看";
+            IntroText.Text = "查看已有笔记和进度，填写完成日期后保存。";
+        }
+        HistoricalProgressPanel.Visibility = progress?.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        HistoricalProgressText.Text = string.Join("\n\n", (progress ?? []).Select(entry => entry.DisplayText));
     }
 
     public MediaExperience? Experience { get; private set; }
@@ -95,7 +102,7 @@ public partial class AddExperienceWindow : Window
         var choice = MessageBox.Show(
             this,
             $"删除这次{(_kind == "book" ? "阅读" : "观看")}记录？{detail}\n\n完成次数和综合评分会自动重新计算。此操作无法撤销。",
-            "删除完成记录",
+            "删除记录",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
         if (choice != MessageBoxResult.Yes)

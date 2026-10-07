@@ -28,6 +28,11 @@
                     <TextBlock x:Name="DateError" Text="请选择完成日期" Foreground="#A33A32" Margin="2,7,0,0" Visibility="Collapsed" />
                   </StackPanel>
                 </Border>
+                <Border x:Name="HistoricalProgressPanel" Style="{StaticResource FormSectionStyle}" Margin="0,14,0,0" Visibility="Collapsed">
+                    <StackPanel><TextBlock Text="历史进度" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock x:Name="HistoricalProgressText" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
                 <StackPanel x:Name="CompletionPanel">
                     <Border x:Name="RatingSection" Style="{StaticResource FormSectionStyle}" Margin="0,14,0,0">
                       <StackPanel>

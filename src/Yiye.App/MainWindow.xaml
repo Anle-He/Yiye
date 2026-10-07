@@ -527,6 +527,20 @@
                             </Grid>
                         </Border></Border>
 
+                        <StackPanel x:Name="UnfinishedHistory" Visibility="Collapsed" Margin="2,16,2,8">
+                            <TextBlock Text="待完成记录" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding UnfinishedExperiences}">
+                                <ItemsControl.ItemTemplate><DataTemplate>
+                                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="16" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DateRangeLabel}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Notes}" TextWrapping="Wrap" Margin="0,6,0,8" />
+                                            <ui:Button Content="查看与处理" Tag="{Binding}" Click="EditExperience_Click" HorizontalAlignment="Left" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                         <Grid Margin="2,16,2,8">
                             <StackPanel><TextBlock Text="个人历程" Style="{StaticResource SectionEyebrow}" /><TextBlock Text="历次完成" Margin="0,5,0,0" Style="{StaticResource SectionTitle}" /></StackPanel>
                             <TextBlock x:Name="HistoryCaptionText" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,2,1" Foreground="{StaticResource MutedBrush}" />

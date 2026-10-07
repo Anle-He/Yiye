@@ -36,6 +36,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     public ObservableCollection<DashboardShowcaseItem> DashboardRecentWorks { get; } = [];
     public ObservableCollection<DashboardAuthorRank> DashboardTopAuthors { get; } = [];
     public ObservableCollection<ExperienceArchiveCard> CompletedExperiences { get; } = [];
+    public ObservableCollection<MediaExperience> UnfinishedExperiences { get; } = [];
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
@@ -326,6 +327,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DetailRatingCountText.Text = _selectedWork.RatingCountLabel;
         PrimaryExperienceButton.Content = "记录一次完成";
 
+        UnfinishedExperiences.Clear();
+        foreach (var experience in allExperiences.Where(experience => experience.CompletedOn is null))
+            UnfinishedExperiences.Add(experience);
+        UnfinishedHistory.Visibility = UnfinishedExperiences.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
         CompletedExperiences.Clear();
         var completed = allExperiences.Where(experience => experience.CompletedOn is not null).ToList();
         for (var index = 0; index < completed.Count; index++)
@@ -406,12 +412,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             return;
         }
-        var dialog = new AddExperienceWindow(_selectedWork.Id, _selectedWork.Kind, experience) { Owner = this };
+        var workKind = _selectedWork.Kind;
+        IReadOnlyList<HistoricalProgressEntry> progress;
+        try
+        {
+            progress = await _repository.GetHistoricalProgressAsync(experience.Id);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(exception.Message, "无法读取历史进度", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        var dialog = new AddExperienceWindow(experience.WorkId, workKind, experience, progress) { Owner = this };
         if (dialog.ShowDialog() != true)
         {
             return;
         }
-        var selectedWorkId = _selectedWork.Id;
+        var selectedWorkId = experience.WorkId;
         if (dialog.DeleteRequested)
         {
             await ExecuteRepositoryActionAsync(async () =>
@@ -439,7 +456,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             return;
         }
         var choice = MessageBox.Show(
-            $"删除《{_selectedWork.Title}》？\n\n作品资料、完成记录和兼容保留的历史进度都会一起删除。此操作无法撤销。",
+            $"删除《{_selectedWork.Title}》？\n\n作品资料、全部阅读或观看记录、历史进度和封面都会一起删除。此操作无法撤销。",
             "删除作品", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (choice != MessageBoxResult.Yes)
         {

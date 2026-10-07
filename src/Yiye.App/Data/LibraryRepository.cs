@@ -87,6 +87,24 @@ public sealed partial class LibraryRepository(Database database)
         return experiences;
     }
 
+    public async Task<IReadOnlyList<HistoricalProgressEntry>> GetHistoricalProgressAsync(string experienceId)
+    {
+        var entries = new List<HistoricalProgressEntry>();
+        await using var connection = await OpenAsync();
+        var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT logged_on, metric, amount, notes FROM progress_entries
+            WHERE experience_id = $experienceId ORDER BY logged_on, created_at, id;
+            """;
+        command.Parameters.AddWithValue("$experienceId", experienceId);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            entries.Add(new HistoricalProgressEntry(
+                DateOnly.Parse(reader.GetString(0), CultureInfo.InvariantCulture),
+                reader.GetString(1), reader.GetInt32(2), reader.IsDBNull(3) ? null : reader.GetString(3)));
+        return entries;
+    }
+
     public async Task AddWorkAsync(MediaWork work)
     {
         await using var connection = await OpenAsync();
