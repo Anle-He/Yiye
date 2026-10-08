@@ -10,16 +10,4 @@ public sealed class DashboardTimelineItem
     public string? Notes { get; init; }
     public string? PrimaryCoverPath { get; init; }
 
-    public bool HasPrimaryCover => !string.IsNullOrWhiteSpace(PrimaryCoverPath);
-    public bool HasNotes => !string.IsNullOrWhiteSpace(Notes);
-    public string KindGlyph => Kind == "book" ? "书" : "影";
-    public string ActionLabel => Kind == "book" ? "完成一次阅读" : "完成一次观看";
-    public string NotesExcerpt
-    {
-        get
-        {
-            var text = Notes?.Trim() ?? string.Empty;
-            return text.Length <= 100 ? text : text[..100] + "…";
-        }
-    }
 }

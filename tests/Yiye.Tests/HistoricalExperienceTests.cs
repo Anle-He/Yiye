@@ -1,4 +1,5 @@
-using System.Reflection;
+using Yiye.Presentation;
+using Yiye.Operations;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,7 +21,7 @@ public sealed class HistoricalExperienceTests
         await context.Repository.AddExperienceAsync(undated);
         await context.SeedHistoricalProgressAsync(active.Id, new DateOnly(2026, 1, 2));
         var progress = await context.Repository.GetHistoricalProgressAsync(active.Id);
-        Assert.Equal("2026-01-02 · 1 分钟", Assert.Single(progress).DisplayText);
+        Assert.Equal("2026-01-02 · 1 分钟", new ProgressCard(Assert.Single(progress)).DisplayText);
         Assert.Empty(await context.Repository.GetHistoricalProgressAsync(undated.Id));
 
         Exception? failure = null;
@@ -31,15 +32,14 @@ public sealed class HistoricalExperienceTests
             AddExperienceWindow? dialog = null;
             try
             {
-                app = new App();
+                app = new App(launchWindow: false);
                 app.InitializeComponent();
-                window = new MainWindow();
-                const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-                typeof(MainWindow).GetField("_repository", flags)!.SetValue(window, context.Repository);
-                ((Task)typeof(MainWindow).GetMethod("ReloadLibraryAsync", flags)!.Invoke(window, [work.Id])!).GetAwaiter().GetResult();
-                Assert.Equal(2, window.UnfinishedExperiences.Count);
-                Assert.Empty(window.CompletedExperiences);
-                Assert.Equal(Visibility.Visible, ((FrameworkElement)window.FindName("UnfinishedHistory")).Visibility);
+                window = new MainWindow(new LibraryApplication(context.Database));
+                window.InitializeLibraryAsync().GetAwaiter().GetResult();
+                window.OpenWorkAsync(work.Id).GetAwaiter().GetResult();
+                Assert.Equal(2, window.DetailView.UnfinishedExperiences.Count);
+                Assert.Empty(window.DetailView.CompletedExperiences);
+                Assert.Equal(Visibility.Visible, ((FrameworkElement)window.DetailView.FindName("UnfinishedHistory")).Visibility);
                 dialog = new AddExperienceWindow(work.Id, work.Kind, active, progress);
                 Assert.Equal(Visibility.Visible, ((FrameworkElement)dialog.FindName("DeleteButton")).Visibility);
                 Assert.Contains("2026-01-02", ((TextBlock)dialog.FindName("HistoricalProgressText")).Text);
@@ -56,9 +56,9 @@ public sealed class HistoricalExperienceTests
                 Assert.Equal(active.StartedOn, completed.StartedOn);
                 Assert.Equal(active.Notes, completed.Notes);
                 context.Repository.UpdateExperienceAsync(completed).GetAwaiter().GetResult();
-                ((Task)typeof(MainWindow).GetMethod("ReloadLibraryAsync", flags)!.Invoke(window, [work.Id])!).GetAwaiter().GetResult();
-                Assert.Equal(undated.Id, Assert.Single(window.UnfinishedExperiences).Id);
-                Assert.Equal(active.Id, Assert.Single(window.CompletedExperiences).Experience.Id);
+                window.OpenWorkAsync(work.Id).GetAwaiter().GetResult();
+                Assert.Equal(undated.Id, Assert.Single(window.DetailView.UnfinishedExperiences).Id);
+                Assert.Equal(active.Id, Assert.Single(window.DetailView.CompletedExperiences).Experience.Id);
             }
             catch (Exception exception) { failure = exception; }
             finally { dialog?.Close(); window?.Close(); app?.Shutdown(); }

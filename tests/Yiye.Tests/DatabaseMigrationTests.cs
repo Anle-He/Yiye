@@ -14,8 +14,7 @@ public sealed class DatabaseMigrationTests
         var directory = string.IsNullOrWhiteSpace(configured)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "QuietShelf")
             : configured;
-        var method = typeof(Database).GetMethod("GetDefaultPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        Assert.Equal(Path.Combine(directory, "records.db"), method.Invoke(null, null));
+        Assert.Equal(Path.Combine(directory, "records.db"), new DataPaths().DatabasePath);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public sealed class DatabaseMigrationTests
         SqliteConnection.ClearAllPools();
         var before = await File.ReadAllBytesAsync(context.Database.DatabasePath);
 
-        await new Database(context.Database.DatabasePath).InitializeAsync();
+        await new Database(context.Database.DatabasePath, pooling: false).InitializeAsync();
         Assert.Single(await context.Repository.GetWorksAsync());
         SqliteConnection.ClearAllPools();
 
@@ -48,15 +47,15 @@ public sealed class DatabaseMigrationTests
         try
         {
             await CreateVersionZeroDatabaseAsync(databasePath);
-            var database = new Database(databasePath);
+            var database = new Database(databasePath, pooling: false);
             await database.InitializeAsync();
 
             var repository = new LibraryRepository(database);
             await repository.DeleteWorkAsync("work-1");
 
-            await new Database(databasePath).InitializeAsync();
+            await new Database(databasePath, pooling: false).InitializeAsync();
 
-            Assert.Null(await new LibraryRepository(new Database(databasePath)).GetWorkAsync("work-1"));
+            Assert.Null(await new LibraryRepository(new Database(databasePath, pooling: false)).GetWorkAsync("work-1"));
         }
         finally
         {
@@ -74,7 +73,7 @@ public sealed class DatabaseMigrationTests
         try
         {
             await CreateLegacyInProgressDatabaseAsync(databasePath);
-            var database = new Database(databasePath);
+            var database = new Database(databasePath, pooling: false);
 
             await database.InitializeAsync();
 
@@ -102,7 +101,7 @@ public sealed class DatabaseMigrationTests
         try
         {
             await CreateVersionOneInProgressDatabaseAsync(databasePath);
-            var database = new Database(databasePath);
+            var database = new Database(databasePath, pooling: false);
 
             await database.InitializeAsync();
 
@@ -122,10 +121,10 @@ public sealed class DatabaseMigrationTests
                 await reset.ExecuteNonQueryAsync();
             }
 
-            await new Database(databasePath).InitializeAsync();
+            await new Database(databasePath, pooling: false).InitializeAsync();
 
             Assert.DoesNotContain(
-                await new LibraryRepository(new Database(databasePath)).GetExperiencesAsync("work-active"),
+                await new LibraryRepository(new Database(databasePath, pooling: false)).GetExperiencesAsync("work-active"),
                 experience => experience.StartedOn is not null && experience.CompletedOn is null);
         }
         finally
@@ -144,7 +143,7 @@ public sealed class DatabaseMigrationTests
         try
         {
             await CreateVersionZeroDatabaseAsync(databasePath);
-            var database = new Database(databasePath);
+            var database = new Database(databasePath, pooling: false);
 
             await database.InitializeAsync();
 
@@ -182,7 +181,7 @@ public sealed class DatabaseMigrationTests
         try
         {
             await CreateVersionZeroDatabaseAsync(databasePath);
-            var database = new Database(databasePath);
+            var database = new Database(databasePath, pooling: false);
             await File.WriteAllTextAsync(database.MigrationBackupPath, "invalid backup");
 
             await database.InitializeAsync();

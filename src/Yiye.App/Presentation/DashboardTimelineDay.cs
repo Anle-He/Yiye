@@ -1,9 +1,10 @@
-namespace Yiye.Models;
+using Yiye.Models;
+namespace Yiye.Presentation;
 
 public sealed class DashboardTimelineDay
 {
     public required DateOnly Date { get; init; }
-    public required IReadOnlyList<DashboardTimelineItem> Items { get; init; }
+    public required IReadOnlyList<TimelineCard> Items { get; init; }
     public string DateLabel => Date.ToString("MM.dd");
     public string YearLabel => Date.ToString("yyyy");
     public string WeekdayLabel => Date.DayOfWeek switch

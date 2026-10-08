@@ -1,10 +1,11 @@
-namespace Yiye.Models;
+using Yiye.Models;
+namespace Yiye.Presentation;
 
 public sealed class LibraryMonth
 {
     public required string Key { get; init; }
     public required string Label { get; init; }
-    public required IReadOnlyList<MediaWork> Works { get; init; }
+    public required IReadOnlyList<WorkCard> Works { get; init; }
     public string CountLabel => $"{Works.Count} 部作品";
     public string OpenLabel => $"展开 {Label}，{CountLabel}";
     public IReadOnlyList<LibraryMonthPreview> PreviewCards => Works.Take(3)
@@ -14,7 +15,7 @@ public sealed class LibraryMonth
             index switch { 1 => 10, 2 => -10, _ => -2 }, 3 - index))
         .Reverse().ToArray();
 
-    public static IReadOnlyList<LibraryMonth> Group(IEnumerable<MediaWork> works) => works
+    public static IReadOnlyList<LibraryMonth> Group(IEnumerable<WorkCard> works) => works
         .GroupBy(work => work.LatestActivityOn is { } date ? new DateOnly(date.Year, date.Month, 1) : (DateOnly?)null)
         .OrderByDescending(group => group.Key)
         .Select(group => new LibraryMonth
@@ -26,4 +27,4 @@ public sealed class LibraryMonth
         }).ToArray();
 }
 
-public sealed record LibraryMonthPreview(MediaWork Work, double Left, double Top, double Angle, int Layer);
+public sealed record LibraryMonthPreview(WorkCard Work, double Left, double Top, double Angle, int Layer);

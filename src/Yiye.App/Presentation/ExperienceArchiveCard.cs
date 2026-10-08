@@ -1,6 +1,7 @@
+using Yiye.Models;
 using System.Globalization;
 
-namespace Yiye.Models;
+namespace Yiye.Presentation;
 
 public sealed class ExperienceArchiveCard
 {
@@ -21,10 +22,5 @@ public sealed class ExperienceArchiveCard
     public int? Immersion => Experience.Immersion;
     public int? Rationality => Experience.Rationality;
     public int? Illumination => Experience.Illumination;
-    public string RatingTier => RatingScale.GetPercentage(Experience.Rank) switch
-    {
-        >= 0.8 => "gold",
-        >= 0.6 => "silver",
-        _ => "bronze"
-    };
+    public string RatingTier => ScorePresentation.Tier(Experience.Rank);
 }

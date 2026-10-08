@@ -1,518 +1,179 @@
-using System.Collections.ObjectModel;
 using System.Windows;
-using System.Windows.Controls;
+using System.Windows.Media.Animation;
+using Yiye.Operations;
 using Yiye.Data;
 using Yiye.Models;
-
 namespace Yiye;
+
+public enum LibraryPageKind { Home, Library, Detail }
 
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
-    private readonly Database _database = new();
-    private LibraryRepository? _repository;
-    private IReadOnlyList<MediaWork> _allWorks = [];
-    private IReadOnlyList<DashboardTimelineItem> _dashboardTimelineItems = [];
-    private DashboardShowcase _dashboardShowcase = new();
-    private string _kindFilter = "all";
+    private readonly LibraryApplication _library;
+    private readonly List<MediaWork> _works = [];
+    private int _navigationVersion;
     private string? _selectedWorkId;
-    private MediaWork? _selectedWork;
-    private int _selectionLoadVersion;
-    private CancellationTokenSource? _searchDebounceCancellation;
-    private bool _isApplyingFilters;
-    private bool _showingDashboard = true;
-    private bool _showingLibrary;
-
-    public MainWindow()
+    private bool _initialized;
+    private bool _busy;
+    public Views.DashboardView HomeView => DashboardPage;
+    public Views.LibraryView LibraryView => LibraryPage;
+    public Views.WorkDetailView DetailView => DetailPage;
+    public LibraryPageKind CurrentPage { get; private set; } = LibraryPageKind.Home;
+    public MainWindow() : this(new LibraryApplication(new Database())) { }
+    public MainWindow(LibraryApplication library)
     {
+        _library = library;
         InitializeComponent();
-        DataContext = this;
-        Loaded += MainWindow_Loaded;
+        DashboardPage.AddRequested += AddWork;
+        DashboardPage.WorkRequested += OpenWork;
+        LibraryPage.AddRequested += AddWork;
+        LibraryPage.WorkRequested += OpenWork;
+        DetailPage.CompletionRequested += AddCompletion;
+        DetailPage.ExperienceRequested += EditExperience;
+        DetailPage.EditRequested += EditWork;
+        DetailPage.DeleteRequested += DeleteWork;
+        DetailPage.CoversRequested += ManageCovers;
+        Loaded += async (_, _) => await RunAsync(InitializeLibraryAsync, "无法打开本地作品库");
+        Closed += (_, _) => _navigationVersion++;
     }
-
-    public ObservableCollection<MediaWork> VisibleWorks { get; } = [];
-    public ObservableCollection<DashboardTimelineDay> DashboardTimelineDays { get; } = [];
-    public ObservableCollection<DashboardShowcaseItem> DashboardTopBooks { get; } = [];
-    public ObservableCollection<DashboardShowcaseItem> DashboardTopScreens { get; } = [];
-    public ObservableCollection<DashboardShowcaseItem> DashboardRecentWorks { get; } = [];
-    public ObservableCollection<DashboardAuthorRank> DashboardTopAuthors { get; } = [];
-    public ObservableCollection<ExperienceArchiveCard> CompletedExperiences { get; } = [];
-    public ObservableCollection<MediaExperience> UnfinishedExperiences { get; } = [];
-
-    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    public async Task InitializeLibraryAsync()
     {
-        try
+        if (_initialized) return;
+        await _library.InitializeAsync();
+        _works.Clear();
+        _works.AddRange(await _library.Works.GetWorksAsync());
+        LibraryPage.SetWorks(_works);
+        DashboardPage.Render(_works, await _library.LoadDashboardAsync());
+        _initialized = true;
+    }
+    public void ShowHome() => Navigate(LibraryPageKind.Home);
+    public void ShowLibrary()
+    {
+        Navigate(LibraryPageKind.Library);
+        LibraryPage.FocusSearch();
+    }
+    private void Navigate(LibraryPageKind page)
+    {
+        _navigationVersion++;
+        CurrentPage = page;
+        _selectedWorkId = null;
+        DetailPage.Clear();
+        SetPageVisibility(page);
+    }
+    private void SetPageVisibility(LibraryPageKind page)
+    {
+        DashboardPage.Visibility = page == LibraryPageKind.Home ? Visibility.Visible : Visibility.Collapsed;
+        LibraryPage.Visibility = page == LibraryPageKind.Library ? Visibility.Visible : Visibility.Collapsed;
+        DetailPage.Visibility = page == LibraryPageKind.Detail ? Visibility.Visible : Visibility.Collapsed;
+        HomeButton.Appearance = page == LibraryPageKind.Home ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
+        LibraryButton.Appearance = page == LibraryPageKind.Library ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
+        if (IsLoaded && SystemParameters.ClientAreaAnimation)
         {
-            await _database.InitializeAsync();
-            _repository = new LibraryRepository(_database);
-            await ReloadLibraryAsync();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show($"无法打开本地作品库。\n\n{exception.Message}", "一页 Yiye", MessageBoxButton.OK, MessageBoxImage.Error);
+            FrameworkElement view = page switch { LibraryPageKind.Home => DashboardPage, LibraryPageKind.Library => LibraryPage, _ => DetailPage };
+            view.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(140))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop });
         }
     }
-
-    private async void AddWork_Click(object sender, RoutedEventArgs e)
+    public async Task OpenWorkAsync(string workId)
     {
-        if (_repository is null)
+        var version = ++_navigationVersion;
+        _selectedWorkId = workId;
+        CurrentPage = LibraryPageKind.Detail;
+        DetailPage.Clear();
+        SetPageVisibility(CurrentPage);
+        var detail = await _library.LoadWorkAsync(workId);
+        if (version != _navigationVersion || _selectedWorkId != workId) return;
+        if (detail is null) { ShowLibrary(); return; }
+        DetailPage.Render(detail);
+    }
+    public async Task ApplyChangeAsync(WorkChange change)
+    {
+        var index = _works.FindIndex(work => work.Id == change.WorkId);
+        if (change.Work is null) { if (index >= 0) _works.RemoveAt(index); }
+        else if (index >= 0) _works[index] = change.Work;
+        else _works.Add(change.Work);
+        LibraryPage.SetWorks(_works);
+        DashboardPage.Render(_works, await _library.LoadDashboardAsync());
+        if (CurrentPage == LibraryPageKind.Detail && _selectedWorkId == change.WorkId)
         {
-            return;
+            if (change.Kind == WorkChangeKind.Removed) ShowHome();
+            else await OpenWorkAsync(change.WorkId);
         }
-
+    }
+    private void Home_Click(object sender, RoutedEventArgs e) => ShowHome();
+    private void Library_Click(object sender, RoutedEventArgs e) => ShowLibrary();
+    private async void OpenWork(string workId) => await RunAsync(() => OpenWorkAsync(workId), "无法打开作品");
+    private async void AddWork()
+    {
+        if (!_initialized || _busy) return;
         var dialog = new AddWorkWindow { Owner = this };
-        if (dialog.ShowDialog() != true || dialog.Work is null)
-        {
-            return;
-        }
-
-        var existing = _allWorks.FirstOrDefault(work =>
-            work.Kind == dialog.Work.Kind && string.Equals(work.Title, dialog.Work.Title, StringComparison.CurrentCultureIgnoreCase));
+        if (dialog.ShowDialog() != true || dialog.Work is not { } work) return;
+        var existing = _works.FirstOrDefault(value => value.Kind == work.Kind && string.Equals(value.Title, work.Title, StringComparison.CurrentCultureIgnoreCase));
         if (existing is not null)
         {
-            var choice = MessageBox.Show(
-                $"《{existing.Title}》已经存在。\n\n选择“是”打开已有作品；选择“否”仍创建一个同名作品。",
+            var choice = MessageBox.Show(this, $"《{existing.Title}》已经存在。\n\n选择“是”打开已有作品；选择“否”仍创建一个同名作品。",
                 "已有同名作品", MessageBoxButton.YesNoCancel, MessageBoxImage.Information);
-            if (choice == MessageBoxResult.Yes)
-            {
-                SearchBox.Clear();
-                await ExecuteRepositoryActionAsync(() => ReloadLibraryAsync(existing.Id), "无法打开作品");
-                return;
-            }
-            if (choice != MessageBoxResult.No)
-            {
-                return;
-            }
+            if (choice == MessageBoxResult.Yes) { await RunAsync(() => OpenWorkAsync(existing.Id), "无法打开作品"); return; }
+            if (choice != MessageBoxResult.No) return;
         }
-
-        await ExecuteRepositoryActionAsync(async () =>
+        await MutateAsync(async () =>
         {
-            await _repository.AddWorkAsync(dialog.Work);
-            SearchBox.Clear();
-            await ReloadLibraryAsync(dialog.Work.Id);
+            await ApplyChangeAsync(await _library.AddWorkAsync(work));
+            await OpenWorkAsync(work.Id);
         }, "无法添加作品");
     }
-
-    private async void WorkList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void AddCompletion()
     {
-        if (_isApplyingFilters)
-        {
-            return;
-        }
-
-        if (WorkList.SelectedItem is not MediaWork work)
-        {
-            if (VisibleWorks.Count == 0)
-            {
-                ShowNoSelection();
-            }
-            return;
-        }
-
-        _showingDashboard = false;
-        _selectedWorkId = work.Id;
-        if (_selectedWork?.Id != work.Id)
-        {
-            await ExecuteRepositoryActionAsync(() => LoadSelectedWorkAsync(work.Id), "无法打开作品");
-        }
+        if (_busy || DetailPage.Work is not { } work) return;
+        var dialog = new AddExperienceWindow(work.Id, work.Kind) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.Experience is not { } experience) return;
+        await MutateAsync(async () => await ApplyChangeAsync(await _library.SaveCompletionAsync(experience, editing: false)), "无法保存本次记录");
     }
-
-    private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private async void EditExperience(MediaExperience experience)
     {
-        if (_repository is null)
+        if (_busy || DetailPage.Work is not { } work) return;
+        await MutateAsync(async () =>
         {
-            return;
-        }
-
-        _searchDebounceCancellation?.Cancel();
-        _searchDebounceCancellation?.Dispose();
-        var cancellation = new CancellationTokenSource();
-        _searchDebounceCancellation = cancellation;
-        try
-        {
-            await Task.Delay(200, cancellation.Token);
-            if (_searchDebounceCancellation == cancellation)
-            {
-                await ExecuteRepositoryActionAsync(() => ApplyFiltersAsync(), "无法筛选作品");
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
+            var progress = await _library.Experiences.GetHistoricalProgressAsync(experience.Id);
+            var dialog = new AddExperienceWindow(work.Id, work.Kind, experience, progress) { Owner = this };
+            if (dialog.ShowDialog() != true) return;
+            if (dialog.DeleteRequested) await ApplyChangeAsync(await _library.DeleteExperienceAsync(experience));
+            else if (dialog.Experience is { } edited) await ApplyChangeAsync(await _library.SaveCompletionAsync(edited, editing: true));
+        }, "无法处理本次记录", disableWindow: false);
     }
-
-    private async void Filter_Click(object sender, RoutedEventArgs e)
+    private async void EditWork()
     {
-        if (sender is not System.Windows.Controls.Button button || button.Tag is not string filter)
-        {
-            return;
-        }
-        _kindFilter = filter;
-        UpdateFilterButtons();
-        CancelPendingSearch();
-        await ExecuteRepositoryActionAsync(() => ApplyFiltersAsync(), "无法筛选作品");
+        if (_busy || DetailPage.Work is not { } work) return;
+        var dialog = new AddWorkWindow(work) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.Work is not { } edited) return;
+        await MutateAsync(async () => await ApplyChangeAsync(await _library.EditWorkAsync(edited)), "无法更新作品");
     }
-
-    private async Task ReloadLibraryAsync(string? selectWorkId = null)
+    private async void DeleteWork()
     {
-        if (_repository is null)
-        {
-            return;
-        }
-        _allWorks = await _repository.GetWorksAsync();
-        await ReloadDashboardAsync();
-        if (selectWorkId is not null)
-        {
-            var target = _allWorks.FirstOrDefault(work => work.Id == selectWorkId);
-            if (target is not null && _kindFilter != "all" && _kindFilter != target.Kind)
-            {
-                _kindFilter = "all";
-                UpdateFilterButtons();
-            }
-            _showingLibrary = false;
-            _selectedWorkId = selectWorkId;
-            _showingDashboard = false;
-        }
-        CancelPendingSearch();
-        await ApplyFiltersAsync(reloadSelected: true);
+        if (_busy || DetailPage.Work is not { } work) return;
+        if (MessageBox.Show(this, $"删除《{work.Title}》？\n\n作品资料、全部阅读或观看记录、历史进度和封面都会一起删除。此操作无法撤销。",
+            "删除作品", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        await MutateAsync(async () => await ApplyChangeAsync(await _library.DeleteWorkAsync(work.Id)), "无法删除作品");
     }
-
-    private async Task ApplyFiltersAsync(bool reloadSelected = false)
+    private async void ManageCovers()
     {
-        var query = SearchBox?.Text.Trim() ?? string.Empty;
-        if (_libraryMonthFilter != (_kindFilter, query))
-        {
-            _expandedMonthKey = null;
-            _libraryMonthFilter = (_kindFilter, query);
-        }
-        var matches = _allWorks.Where(work =>
-            (_kindFilter == "all" || work.Kind == _kindFilter) &&
-             (string.IsNullOrWhiteSpace(query)
-              || work.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
-              || (work.Subtitle?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false)
-              || (work.Author?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false))).ToList();
-
-
-        var selected = _showingDashboard || _showingLibrary ? null : matches.FirstOrDefault(work => work.Id == _selectedWorkId);
-        if (!_showingDashboard && !_showingLibrary && selected is null && matches.Count > 0 && string.IsNullOrWhiteSpace(query))
-        {
-            selected = matches[0];
-        }
-
-        _isApplyingFilters = true;
-        try
-        {
-            VisibleWorks.Clear();
-            foreach (var work in matches)
-            {
-                VisibleWorks.Add(work);
-            }
-
-            RefreshLibraryMonths(selected?.Id);
-            WorkList.SelectedItem = selected;
-        }
-        finally
-        {
-            _isApplyingFilters = false;
-        }
-
-        if (EmptyState is null || WorkList is null)
-        {
-            return;
-        }
-        LibraryCountText.Text = $"{_allWorks.Count} 部作品";
-        RegularWorksHeader.Visibility = matches.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        EmptyState.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        EmptyTitle.Text = _allWorks.Count == 0 ? "这里还没有作品" : "没有找到相符的作品";
-        EmptyDescription.Text = _allWorks.Count == 0
-            ? "先加入一本书，或一部想留下来的影视。"
-            : "换一个标题关键词或类别试试。";
-
-        if (_showingLibrary) return;
-
-        if (selected is null)
-        {
-            if (_showingDashboard)
-            {
-                ShowDashboard();
-            }
-            else
-            {
-                ShowNoSelection();
-            }
-            return;
-        }
-
-        _selectedWorkId = selected.Id;
-        if (reloadSelected || _selectedWork?.Id != selected.Id)
-        {
-            await LoadSelectedWorkAsync(selected.Id);
-        }
+        if (_busy || DetailPage.Work is not { } work) return;
+        var dialog = new ManageCoversWindow(_library.Covers, work) { Owner = this };
+        dialog.ShowDialog();
+        if (dialog.HasChanges)
+            await MutateAsync(async () => await ApplyChangeAsync(await _library.CoversChangedAsync(work.Id)), "无法刷新封面");
     }
-
-    private void CancelPendingSearch()
+    private async Task MutateAsync(Func<Task> action, string errorTitle, bool disableWindow = true)
     {
-        _searchDebounceCancellation?.Cancel();
-        _searchDebounceCancellation?.Dispose();
-        _searchDebounceCancellation = null;
+        if (_busy) return;
+        _busy = true;
+        if (disableWindow) IsEnabled = false;
+        try { await RunAsync(action, errorTitle); }
+        finally { IsEnabled = true; _busy = false; }
     }
-
-    private void UpdateFilterButtons()
+    private async Task RunAsync(Func<Task> action, string errorTitle)
     {
-        foreach (var button in new[] { AllFilterButton, BookFilterButton, ScreenFilterButton })
-        {
-            button.Appearance = string.Equals(button.Tag?.ToString(), _kindFilter, StringComparison.Ordinal)
-                ? Wpf.Ui.Controls.ControlAppearance.Primary
-                : Wpf.Ui.Controls.ControlAppearance.Secondary;
-        }
-    }
-
-    private async Task LoadSelectedWorkAsync(string workId)
-    {
-        if (_repository is null)
-        {
-            return;
-        }
-
-        var loadVersion = ++_selectionLoadVersion;
-        _selectedWork = null;
-        var selectedWorkTask = _repository.GetWorkAsync(workId);
-        var coversTask = _repository.GetCoversAsync(workId);
-        var experiencesTask = _repository.GetExperiencesAsync(workId);
-        await Task.WhenAll(selectedWorkTask, coversTask, experiencesTask);
-        if (loadVersion != _selectionLoadVersion || _selectedWorkId != workId)
-        {
-            return;
-        }
-
-        var selectedWork = await selectedWorkTask;
-        if (selectedWork is null)
-        {
-            if (loadVersion == _selectionLoadVersion && _selectedWorkId == workId)
-            {
-                ShowNoSelection();
-            }
-            return;
-        }
-
-        var covers = await coversTask;
-        var allExperiences = await experiencesTask;
-        if (loadVersion != _selectionLoadVersion || _selectedWorkId != workId)
-        {
-            return;
-        }
-
-        _selectedWork = selectedWork;
-        SetLibraryPaneVisible(false);
-        _showingDashboard = false;
-        DashboardScroll.Visibility = Visibility.Collapsed;
-        HomeButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Secondary;
-
-        RenderCoverStack(covers);
-        DetailKickerText.Text = _selectedWork.Kind == "book" ? "书籍档案" : "影视档案";
-        DetailTitleText.Text = _selectedWork.Title;
-        DetailSubtitleText.Text = _selectedWork.Subtitle ?? string.Empty;
-        DetailSubtitleText.Visibility = string.IsNullOrWhiteSpace(_selectedWork.Subtitle)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        DetailAuthorText.Text = _selectedWork.Author ?? string.Empty;
-        DetailAuthorText.Visibility = _selectedWork.Kind == "book" && !string.IsNullOrWhiteSpace(_selectedWork.Author)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        DetailMetaText.Text = _selectedWork.ExperienceCount == 0
-            ? $"{_selectedWork.KindLabel} · 尚无完成记录"
-            : $"{_selectedWork.KindLabel} · {_selectedWork.ExperienceSummaryLabel} · {_selectedWork.LatestActivityLabel}";
-        DetailRankText.Text = _selectedWork.AggregateRankLabel;
-        DetailCountText.Text = _selectedWork.ExperienceCountLabel;
-        DetailRatingCountText.Text = _selectedWork.RatingCountLabel;
-        PrimaryExperienceButton.Content = "记录一次完成";
-
-        UnfinishedExperiences.Clear();
-        foreach (var experience in allExperiences.Where(experience => experience.CompletedOn is null))
-            UnfinishedExperiences.Add(experience);
-        UnfinishedHistory.Visibility = UnfinishedExperiences.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        CompletedExperiences.Clear();
-        var completed = allExperiences.Where(experience => experience.CompletedOn is not null).ToList();
-        for (var index = 0; index < completed.Count; index++)
-        {
-            CompletedExperiences.Add(new ExperienceArchiveCard
-            {
-                Experience = completed[index],
-                ArchiveNumber = completed.Count - index
-            });
-        }
-        HistoryCaptionText.Text = CompletedExperiences.Count == 0 ? string.Empty : $"共 {CompletedExperiences.Count} 次";
-        HistoryEmpty.Visibility = CompletedExperiences.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        HistoryList.Visibility = CompletedExperiences.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-
-        DetailEmpty.Visibility = Visibility.Collapsed;
-        DetailScroll.Visibility = Visibility.Visible;
-    }
-
-    private void ShowNoSelection()
-    {
-        _selectionLoadVersion++;
-        _selectedWork = null;
-        DetailScroll.Visibility = Visibility.Collapsed;
-        DetailEmpty.Visibility = Visibility.Visible;
-        DashboardScroll.Visibility = Visibility.Collapsed;
-        HomeButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Secondary;
-    }
-
-    private void ShowDashboard()
-    {
-        SetLibraryPaneVisible(false);
-        _selectionLoadVersion++;
-        _showingDashboard = true;
-        _selectedWorkId = null;
-        _selectedWork = null;
-        _isApplyingFilters = true;
-        try
-        {
-            WorkList.SelectedItem = null;
-        }
-        finally
-        {
-            _isApplyingFilters = false;
-        }
-        DetailScroll.Visibility = Visibility.Collapsed;
-        DetailEmpty.Visibility = Visibility.Collapsed;
-        DashboardScroll.Visibility = Visibility.Visible;
-        HomeButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Primary;
-    }
-
-    private void Home_Click(object sender, RoutedEventArgs e)
-    {
-        ShowDashboard();
-    }
-
-    private async void PrimaryExperience_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repository is null || _selectedWork is null)
-        {
-            return;
-        }
-        var dialog = new AddExperienceWindow(_selectedWork.Id, _selectedWork.Kind) { Owner = this };
-        if (dialog.ShowDialog() != true || dialog.Experience is null)
-        {
-            return;
-        }
-        var selectedWorkId = _selectedWork.Id;
-        await ExecuteRepositoryActionAsync(async () =>
-        {
-            await _repository.AddExperienceAsync(dialog.Experience);
-            await ReloadLibraryAsync(selectedWorkId);
-        }, "无法保存本次记录");
-    }
-
-    private async void EditExperience_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repository is null || _selectedWork is null || sender is not FrameworkElement { Tag: MediaExperience experience })
-        {
-            return;
-        }
-        var workKind = _selectedWork.Kind;
-        IReadOnlyList<HistoricalProgressEntry> progress;
-        try
-        {
-            progress = await _repository.GetHistoricalProgressAsync(experience.Id);
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(exception.Message, "无法读取历史进度", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        var dialog = new AddExperienceWindow(experience.WorkId, workKind, experience, progress) { Owner = this };
-        if (dialog.ShowDialog() != true)
-        {
-            return;
-        }
-        var selectedWorkId = experience.WorkId;
-        if (dialog.DeleteRequested)
-        {
-            await ExecuteRepositoryActionAsync(async () =>
-            {
-                await _repository.DeleteExperienceAsync(experience.Id, selectedWorkId);
-                await ReloadLibraryAsync(selectedWorkId);
-            }, "无法删除本次记录");
-            return;
-        }
-        if (dialog.Experience is null)
-        {
-            return;
-        }
-        await ExecuteRepositoryActionAsync(async () =>
-        {
-            await _repository.UpdateExperienceAsync(dialog.Experience);
-            await ReloadLibraryAsync(selectedWorkId);
-        }, "无法更新本次记录");
-    }
-
-    private async void DeleteWork_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repository is null || _selectedWork is null)
-        {
-            return;
-        }
-        var choice = MessageBox.Show(
-            $"删除《{_selectedWork.Title}》？\n\n作品资料、全部阅读或观看记录、历史进度和封面都会一起删除。此操作无法撤销。",
-            "删除作品", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (choice != MessageBoxResult.Yes)
-        {
-            return;
-        }
-        var selectedWorkId = _selectedWork.Id;
-        await ExecuteRepositoryActionAsync(async () =>
-        {
-            await _repository.DeleteWorkAsync(selectedWorkId);
-            ShowDashboard();
-            await ReloadLibraryAsync();
-        }, "无法删除作品");
-    }
-
-    private async void EditWork_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repository is null || _selectedWork is null)
-        {
-            return;
-        }
-
-        var dialog = new AddWorkWindow(_selectedWork) { Owner = this };
-        if (dialog.ShowDialog() != true || dialog.Work is null)
-        {
-            return;
-        }
-
-        await ExecuteRepositoryActionAsync(async () =>
-        {
-            await _repository.UpdateWorkMetadataAsync(dialog.Work);
-            SearchBox.Clear();
-            await ReloadLibraryAsync(dialog.Work.Id);
-        }, "无法更新作品");
-    }
-
-    private async void ManageCovers_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repository is null || _selectedWork is null)
-        {
-            return;
-        }
-
-        var workId = _selectedWork.Id;
-        new ManageCoversWindow(_repository, _selectedWork) { Owner = this }.ShowDialog();
-        await ExecuteRepositoryActionAsync(() => ReloadLibraryAsync(workId), "无法刷新作品");
-    }
-
-    private async Task ExecuteRepositoryActionAsync(Func<Task> action, string errorTitle)
-    {
-        try
-        {
-            await action();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(exception.Message, errorTitle, MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        try { await action(); }
+        catch (Exception exception) { MessageBox.Show(this, exception.Message, errorTitle, MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 }

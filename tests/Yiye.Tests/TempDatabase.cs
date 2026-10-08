@@ -20,7 +20,7 @@ internal sealed class TempDatabase : IAsyncDisposable
     {
         var root = Path.Combine(Path.GetTempPath(), "Yiye-Tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        var database = new Database(Path.Combine(root, "records.db"));
+        var database = new Database(Path.Combine(root, "records.db"), pooling: false);
         await database.InitializeAsync();
         return new TempDatabase(root, database);
     }
@@ -55,7 +55,6 @@ internal sealed class TempDatabase : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
         var resolvedRoot = Path.GetFullPath(Root);
         var tempRoot = Path.GetFullPath(Path.GetTempPath());
         if (!resolvedRoot.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase)

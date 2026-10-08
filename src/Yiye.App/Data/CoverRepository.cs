@@ -6,7 +6,7 @@ using Yiye.Models;
 
 namespace Yiye.Data;
 
-public sealed partial class LibraryRepository
+public sealed class CoverRepository(Database database) : SqliteStore(database)
 {
     // The application is single-instance. Share gates across repository instances
     // so each cover directory stays consistent through file and database changes.
@@ -40,7 +40,7 @@ public sealed partial class LibraryRepository
                 Id = reader.GetString(0),
                 WorkId = reader.GetString(1),
                 FileName = fileName,
-                FilePath = database.GetCoverFilePath(workId, fileName),
+                FilePath = Database.GetCoverFilePath(workId, fileName),
                 SortOrder = reader.GetInt32(3),
                 CreatedAt = DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture)
             });
@@ -64,7 +64,7 @@ public sealed partial class LibraryRepository
             throw new InvalidOperationException("每部作品最多保存 20 张封面。");
         }
 
-        var coverDirectory = database.GetCoverDirectory(workId);
+        var coverDirectory = Database.GetCoverDirectory(workId);
         Directory.CreateDirectory(coverDirectory);
         var staged = new List<WorkCover>();
         var createdFiles = new List<string>();
@@ -84,7 +84,7 @@ public sealed partial class LibraryRepository
 
                 var coverId = Guid.NewGuid().ToString("N");
                 var fileName = coverId + ".jpg";
-                var destination = database.GetCoverFilePath(workId, fileName);
+                var destination = Database.GetCoverFilePath(workId, fileName);
                 var temporaryDestination = destination + ".adding";
                 createdFiles.Add(temporaryDestination);
                 await CoverImageProcessor.SaveOptimizedJpegAsync(source.FullName, temporaryDestination);
@@ -222,7 +222,7 @@ public sealed partial class LibraryRepository
 
     private async Task<IDisposable> AcquireCoverLockAsync(string workId)
     {
-        var gate = CoverOperationGates.GetOrAdd(database.GetCoverDirectory(workId), _ => new SemaphoreSlim(1, 1));
+        var gate = CoverOperationGates.GetOrAdd(Database.GetCoverDirectory(workId), _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync();
         return new CoverOperationLock(gate);
     }
@@ -253,7 +253,7 @@ public sealed partial class LibraryRepository
 
     private void ReconcileDeletedCoverFiles(string workId, IReadOnlyList<WorkCover> covers)
     {
-        var directory = database.GetCoverDirectory(workId);
+        var directory = Database.GetCoverDirectory(workId);
         if (!Directory.Exists(directory))
         {
             return;
@@ -291,4 +291,42 @@ public sealed partial class LibraryRepository
             }
         }
     }
+    public async Task DeleteWorkCoversAsync(string workId, Func<Task> deleteWork)
+    {
+        using var coverLock = await AcquireCoverLockAsync(workId);
+        var coverDirectory = Database.GetCoverDirectory(workId);
+        var temporaryDirectory = coverDirectory + ".deleting-" + Guid.NewGuid().ToString("N");
+        if (Directory.Exists(coverDirectory))
+        {
+            Directory.Move(coverDirectory, temporaryDirectory);
+        }
+        try
+        {
+            await deleteWork();
+        }
+        catch
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Move(temporaryDirectory, coverDirectory);
+            }
+            throw;
+        }
+        try
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // The database deletion has committed; leftover covers must not prevent the UI refresh.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // The database deletion has committed; leftover covers must not prevent the UI refresh.
+        }
+    }
+
 }

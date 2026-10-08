@@ -46,7 +46,7 @@ public sealed class LocalDatabaseMigrationTests
         try
         {
             var before = await ReadSnapshotAsync(copyPath);
-            var database = new Database(copyPath);
+            var database = new Database(copyPath, pooling: false);
 
             await database.InitializeAsync();
 

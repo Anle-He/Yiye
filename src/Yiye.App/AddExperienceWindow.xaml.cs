@@ -1,3 +1,4 @@
+using Yiye.Presentation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -45,7 +46,7 @@ public partial class AddExperienceWindow : Window
             IntroText.Text = "查看已有笔记和进度，填写完成日期后保存。";
         }
         HistoricalProgressPanel.Visibility = progress?.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        HistoricalProgressText.Text = string.Join("\n\n", (progress ?? []).Select(entry => entry.DisplayText));
+        HistoricalProgressText.Text = string.Join("\n\n", (progress ?? []).Select(entry => new ProgressCard(entry).DisplayText));
     }
 
     public MediaExperience? Experience { get; private set; }

@@ -6,14 +6,14 @@ using System.Windows.Media.Effects;
 using Yiye.Converters;
 using Yiye.Models;
 
-namespace Yiye;
+namespace Yiye.Controls;
 
-public partial class MainWindow
+public sealed class CoverStack : Canvas
 {
-    private void RenderCoverStack(IReadOnlyList<WorkCover> covers)
+    public void Render(MediaWork? work, IReadOnlyList<WorkCover> covers)
     {
-        DetailCoverCanvas.Children.Clear();
-        if (_selectedWork is null || covers.Count == 0)
+        Children.Clear();
+        if (work is null || covers.Count == 0)
         {
             var placeholder = new Border
             {
@@ -25,7 +25,7 @@ public partial class MainWindow
                 BorderThickness = new Thickness(1),
                 Child = new TextBlock
                 {
-                    Text = _selectedWork?.KindGlyph ?? "书",
+                    Text = work?.Kind == "screen" ? "影" : "书",
                     FontSize = 25,
                     FontWeight = FontWeights.DemiBold,
                     Foreground = (Brush)FindResource("AccentBrush"),
@@ -35,7 +35,7 @@ public partial class MainWindow
             };
             Canvas.SetLeft(placeholder, 8);
             Canvas.SetTop(placeholder, 5);
-            DetailCoverCanvas.Children.Add(placeholder);
+            Children.Add(placeholder);
             AddCoverBadge("+");
             return;
         }
@@ -75,7 +75,7 @@ public partial class MainWindow
             };
             Canvas.SetLeft(card, left);
             Canvas.SetTop(card, top);
-            DetailCoverCanvas.Children.Add(card);
+            Children.Add(card);
         }
         if (covers.Count > 1)
         {
@@ -106,6 +106,6 @@ public partial class MainWindow
         };
         Canvas.SetRight(badge, 0);
         Canvas.SetBottom(badge, 1);
-        DetailCoverCanvas.Children.Add(badge);
+        Children.Add(badge);
     }
 }

@@ -1,3 +1,4 @@
+using Yiye.Presentation;
 using Yiye.Models;
 
 namespace Yiye.Tests;
@@ -36,15 +37,20 @@ public sealed class LibraryMonthTests
     [Fact]
     public void ANewRecordMovesAWorkToItsNewMonthOnly()
     {
-        var updated = new MediaWork { Id = "same-work", Title = "updated", Kind = "book",
+        var updated = new MediaWork
+        {
+            Id = "same-work",
+            Title = "updated",
+            Kind = "book",
             CreatedAt = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero),
-            LatestActivityOn = new DateOnly(2026, 10, 1) };
-        var month = Assert.Single(LibraryMonth.Group([updated]));
+            LatestActivityOn = new DateOnly(2026, 10, 1)
+        };
+        var month = Assert.Single(LibraryMonth.Group([new WorkCard(updated)]));
         Assert.Equal("2026-10", month.Key);
         Assert.Equal(updated.Id, Assert.Single(month.Works).Id);
         Assert.Single(month.PreviewCards);
     }
 
-    private static MediaWork Work(string title, DateOnly? date) =>
-        new() { Title = title, Kind = "book", LatestActivityOn = date };
+    private static WorkCard Work(string title, DateOnly? date) =>
+        new(new MediaWork { Title = title, Kind = "book", LatestActivityOn = date });
 }

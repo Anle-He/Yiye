@@ -1,3 +1,4 @@
+using Yiye.Presentation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Yiye.Data;
@@ -15,7 +16,8 @@ public sealed class LibraryRepositoryTests
         await context.Repository.AddWorkAsync(work);
         await context.Repository.AddExperienceAsync(new MediaExperience
         {
-            WorkId = work.Id, CompletedOn = new DateOnly(2026, 9, 25)
+            WorkId = work.Id,
+            CompletedOn = new DateOnly(2026, 9, 25)
         });
         var directory = context.Database.GetCoverDirectory(work.Id);
         Directory.CreateDirectory(directory);
@@ -117,13 +119,14 @@ public sealed class LibraryRepositoryTests
         Assert.Equal("updated-subtitle", storedWork?.Subtitle);
         Assert.Equal("updated-author", storedWork?.Author);
         Assert.Equal(2, covers.Count);
-        Assert.True(covers[0].IsPrimary);
+        Assert.True(new CoverCard(covers[0]).IsPrimary);
         Assert.All(covers, cover => Assert.True(File.Exists(cover.FilePath)));
         Assert.False(string.IsNullOrWhiteSpace(storedWork?.PrimaryCoverPath));
 
         await context.Repository.AddExperienceAsync(new MediaExperience
         {
-            WorkId = work.Id, CompletedOn = new DateOnly(2026, 8, 26)
+            WorkId = work.Id,
+            CompletedOn = new DateOnly(2026, 8, 26)
         });
         var timelineItem = Assert.Single(await context.Repository.GetRecentTimelineAsync());
         Assert.Equal(covers[0].FilePath, timelineItem.PrimaryCoverPath);
@@ -136,7 +139,7 @@ public sealed class LibraryRepositoryTests
         await context.Repository.DeleteCoverAsync(work.Id, reordered[1].Id);
         var remaining = await context.Repository.GetCoversAsync(work.Id);
         Assert.Single(remaining);
-        Assert.True(remaining[0].IsPrimary);
+        Assert.True(new CoverCard(remaining[0]).IsPrimary);
         Assert.False(File.Exists(deletedPath));
 
         await context.Repository.DeleteWorkAsync(work.Id);
@@ -232,23 +235,25 @@ public sealed class LibraryRepositoryTests
         Assert.Equal(reading.Notes, item.Notes);
         Assert.Null(item.PrimaryCoverPath);
         Assert.Equal(book.Id, item.WorkId);
-        Assert.Equal("完成一次阅读", item.ActionLabel);
+        Assert.Equal("完成一次阅读", new TimelineCard(item).ActionLabel);
 
         var completedViewing = new MediaExperience
         {
-            WorkId = screen.Id, CompletedOn = new DateOnly(2026, 8, 27),
+            WorkId = screen.Id,
+            CompletedOn = new DateOnly(2026, 8, 27),
             UpdatedAt = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero)
         };
         var repeatedViewing = new MediaExperience
         {
-            WorkId = screen.Id, CompletedOn = completedViewing.CompletedOn,
+            WorkId = screen.Id,
+            CompletedOn = completedViewing.CompletedOn,
             UpdatedAt = completedViewing.UpdatedAt.AddHours(1)
         };
         await context.Repository.AddExperienceAsync(completedViewing);
         await context.Repository.AddExperienceAsync(repeatedViewing);
         var recent = await context.Repository.GetRecentTimelineAsync(2);
         Assert.Equal(new[] { repeatedViewing.Id, completedViewing.Id }, recent.Select(entry => entry.Id));
-        Assert.All(recent, entry => Assert.Equal("完成一次观看", entry.ActionLabel));
+        Assert.All(recent, entry => Assert.Equal("完成一次观看", new TimelineCard(entry).ActionLabel));
         Assert.All(recent, entry => Assert.Null(entry.Notes));
     }
 
@@ -265,20 +270,29 @@ public sealed class LibraryRepositoryTests
 
         await context.Repository.AddExperienceAsync(new MediaExperience
         {
-            WorkId = alpha.Id, CompletedOn = new DateOnly(2026, 1, 2),
-            Allure = 3, Immersion = 5, Rationality = 5, Illumination = 5
+            WorkId = alpha.Id,
+            CompletedOn = new DateOnly(2026, 1, 2),
+            Allure = 3,
+            Immersion = 5,
+            Rationality = 5,
+            Illumination = 5
         });
         for (var day = 3; day <= 5; day++)
         {
             await context.Repository.AddExperienceAsync(new MediaExperience
             {
-                WorkId = beta.Id, CompletedOn = new DateOnly(2026, 1, day),
-                Allure = 3, Immersion = 4, Rationality = 4, Illumination = 4
+                WorkId = beta.Id,
+                CompletedOn = new DateOnly(2026, 1, day),
+                Allure = 3,
+                Immersion = 4,
+                Rationality = 4,
+                Illumination = 4
             });
         }
         await context.Repository.AddExperienceAsync(new MediaExperience
         {
-            WorkId = screen.Id, CompletedOn = new DateOnly(2026, 1, 6)
+            WorkId = screen.Id,
+            CompletedOn = new DateOnly(2026, 1, 6)
         });
 
         var showcase = await context.Repository.GetDashboardShowcaseAsync();
@@ -304,15 +318,19 @@ public sealed class LibraryRepositoryTests
         await context.Repository.AddWorkAsync(work);
         var experience = new MediaExperience
         {
-            WorkId = work.Id, CompletedOn = new DateOnly(2026, 10, 1),
-            Allure = 3, Immersion = 5, Rationality = 5, Illumination = 5
+            WorkId = work.Id,
+            CompletedOn = new DateOnly(2026, 10, 1),
+            Allure = 3,
+            Immersion = 5,
+            Rationality = 5,
+            Illumination = 5
         };
         await context.Repository.AddExperienceAsync(experience);
 
         var showcase = await context.Repository.GetDashboardShowcaseAsync();
 
         Assert.Equal(5.0, Assert.Single(showcase.TopAuthors).WeightedRank);
-        Assert.Contains("满分 5.0", Assert.Single(showcase.TopAuthors).EvidenceLabel);
+        Assert.Contains("满分 5.0", new AuthorCard(Assert.Single(showcase.TopAuthors)).EvidenceLabel);
         Assert.Equal(3.9, Assert.Single(showcase.CompletedWorks).AggregateRank);
         Assert.Equal(3.9, experience.Rank);
         Assert.Equal(3.9, (await context.Repository.GetWorkAsync(work.Id))!.AggregateRank);
@@ -329,8 +347,14 @@ public sealed class LibraryRepositoryTests
         await context.Repository.AddExperienceAsync(experience);
         await context.Repository.UpdateExperienceAsync(new MediaExperience
         {
-            Id = experience.Id, WorkId = work.Id, StartedOn = startedOn, CompletedOn = completedOn,
-            Allure = 3, Immersion = 5, Rationality = 5, Illumination = 5
+            Id = experience.Id,
+            WorkId = work.Id,
+            StartedOn = startedOn,
+            CompletedOn = completedOn,
+            Allure = 3,
+            Immersion = 5,
+            Rationality = 5,
+            Illumination = 5
         });
 
         var aggregate = Assert.Single(await context.Repository.GetWorksAsync());
@@ -394,7 +418,7 @@ public sealed class LibraryRepositoryTests
         {
             // Pause with the first JPEG on disk but not yet committed to SQLite.
             await sources.FirstCoverStaged.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            var otherRepository = new LibraryRepository(new Database(context.Database.DatabasePath));
+            var otherRepository = new LibraryRepository(new Database(context.Database.DatabasePath, pooling: false));
             reading = otherRepository.GetCoversAsync(work.Id);
         }
         finally

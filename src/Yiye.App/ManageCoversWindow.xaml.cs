@@ -1,3 +1,4 @@
+using Yiye.Presentation;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Input;
@@ -11,10 +12,10 @@ namespace Yiye;
 
 public partial class ManageCoversWindow : Window
 {
-    private readonly LibraryRepository _repository;
+    private readonly CoverRepository _repository;
     private readonly MediaWork _work;
 
-    public ManageCoversWindow(LibraryRepository repository, MediaWork work)
+    public ManageCoversWindow(CoverRepository repository, MediaWork work)
     {
         _repository = repository;
         _work = work;
@@ -35,14 +36,16 @@ public partial class ManageCoversWindow : Window
         };
     }
 
-    public ObservableCollection<WorkCover> Covers { get; } = [];
+    public bool HasChanges { get; private set; }
+
+    public ObservableCollection<CoverCard> Covers { get; } = [];
 
     private async Task ReloadAsync()
     {
         Covers.Clear();
         foreach (var cover in await _repository.GetCoversAsync(_work.Id))
         {
-            Covers.Add(cover);
+            Covers.Add(new CoverCard(cover));
         }
         CoverCountText.Text = Covers.Count == 0
             ? $"{_work.Title} · 可以用多张封面表示不同版本"
@@ -68,6 +71,7 @@ public partial class ManageCoversWindow : Window
         try
         {
             await _repository.AddCoversAsync(_work.Id, dialog.FileNames);
+            HasChanges = true;
             await ReloadAsync();
         }
         catch (Exception exception)
@@ -78,7 +82,7 @@ public partial class ManageCoversWindow : Window
 
     private async void SetPrimary_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: WorkCover cover })
+        if (sender is not FrameworkElement { Tag: CoverCard cover })
         {
             return;
         }
@@ -87,7 +91,7 @@ public partial class ManageCoversWindow : Window
 
     private async void MoveEarlier_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: WorkCover cover })
+        if (sender is not FrameworkElement { Tag: CoverCard cover })
         {
             return;
         }
@@ -96,7 +100,7 @@ public partial class ManageCoversWindow : Window
 
     private async void MoveLater_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: WorkCover cover })
+        if (sender is not FrameworkElement { Tag: CoverCard cover })
         {
             return;
         }
@@ -105,7 +109,7 @@ public partial class ManageCoversWindow : Window
 
     private async void DeleteCover_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: WorkCover cover })
+        if (sender is not FrameworkElement { Tag: CoverCard cover })
         {
             return;
         }
@@ -121,7 +125,7 @@ public partial class ManageCoversWindow : Window
 
     private void PreviewCover_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: WorkCover cover })
+        if (sender is not FrameworkElement { Tag: CoverCard cover })
         {
             return;
         }
@@ -150,6 +154,7 @@ public partial class ManageCoversWindow : Window
         try
         {
             await action();
+            HasChanges = true;
             await ReloadAsync();
         }
         catch (Exception exception)

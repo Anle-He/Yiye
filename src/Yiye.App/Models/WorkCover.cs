@@ -9,6 +9,4 @@ public sealed class WorkCover
     public int SortOrder { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
 
-    public bool IsPrimary => SortOrder == 0;
-    public string PositionLabel => IsPrimary ? "主封面" : $"第 {SortOrder + 1} 张";
 }

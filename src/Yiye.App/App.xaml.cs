@@ -6,6 +6,10 @@ namespace Yiye;
 
 public partial class App : Application
 {
+    private readonly bool _launchWindow;
+    public App() : this(launchWindow: true) { }
+    public App(bool launchWindow) => _launchWindow = launchWindow;
+
     // Share activation with existing installations that use the same local library.
     private const string InstanceMutexName = @"Local\QuietShelf.SingleInstance";
     private const string ActivationEventName = @"Local\QuietShelf.Activate";
@@ -18,6 +22,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (!_launchWindow) return;
 
         _activationEvent = new EventWaitHandle(
             initialState: false,
@@ -58,7 +63,7 @@ public partial class App : Application
             systemGlassColor: false,
             systemAccentColor: false);
 
-        MainWindow = new MainWindow();
+        MainWindow = new MainWindow(new Yiye.Operations.LibraryApplication(new Yiye.Data.Database()));
         MainWindow.Show();
     }
 

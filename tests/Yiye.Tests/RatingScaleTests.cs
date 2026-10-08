@@ -1,3 +1,4 @@
+using Yiye.Presentation;
 using Yiye.Models;
 
 namespace Yiye.Tests;
@@ -46,7 +47,7 @@ public sealed class RatingScaleTests
     {
         var work = new MediaWork { Title = "测试作品", Kind = "book", AggregateRank = rank };
 
-        Assert.Equal(expectedTier, work.AggregateScoreTier);
+        Assert.Equal(expectedTier, new WorkCard(work).AggregateScoreTier);
     }
 
     [Theory]
@@ -58,6 +59,6 @@ public sealed class RatingScaleTests
     {
         var work = new MediaWork { Title = "测试作品", Kind = "book", ExperienceCount = count };
 
-        Assert.Equal(expectedTier, work.ExperienceCountColorTier);
+        Assert.Equal(expectedTier, new WorkCard(work).ExperienceCountColorTier);
     }
 }
