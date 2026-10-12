@@ -48,6 +48,13 @@
 
 自动化覆盖仓储操作、评分、状态、历史记录、文件恢复、迁移和操作结果。窗口检查覆盖首页多种宽度、月份展开与滚动、详情布局、评分下拉框及封面窗口。使用本机数据时验证副本；安装验收另行检查完整发布目录及实际安装程序启动。
 
+自动测试与窗口检查分别启动测试进程，避免 WPF 的单 `Application` 实例限制和窗口测试的连接池清理影响其他测试：
+
+```powershell
+dotnet test .\Yiye.slnx -c Release --filter "Category!=Manual&Category!=LocalData"
+dotnet test .\Yiye.slnx -c Release --no-build --filter "Category=Manual"
+```
+
 ## 为什么暂不选其他方案
 
 - WinUI 3 的部署面更复杂，本项目暂时不需要它独有的能力。

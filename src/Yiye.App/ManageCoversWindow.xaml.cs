@@ -14,6 +14,7 @@ public partial class ManageCoversWindow : Window
 {
     private readonly CoverRepository _repository;
     private readonly MediaWork _work;
+    private bool _busy;
 
     public ManageCoversWindow(CoverRepository repository, MediaWork work)
     {
@@ -21,6 +22,7 @@ public partial class ManageCoversWindow : Window
         _work = work;
         InitializeComponent();
         DataContext = this;
+        Closing += (_, e) => e.Cancel = _busy;
         Loaded += async (_, _) =>
         {
             try
@@ -56,6 +58,7 @@ public partial class ManageCoversWindow : Window
 
     private async void AddCovers_Click(object sender, RoutedEventArgs e)
     {
+        if (_busy) return;
         var dialog = new OpenFileDialog
         {
             Title = "选择封面图片",
@@ -68,16 +71,7 @@ public partial class ManageCoversWindow : Window
             return;
         }
 
-        try
-        {
-            await _repository.AddCoversAsync(_work.Id, dialog.FileNames);
-            HasChanges = true;
-            await ReloadAsync();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(exception.Message, "无法添加封面", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        await ExecuteAndReloadAsync(() => _repository.AddCoversAsync(_work.Id, dialog.FileNames), "无法添加封面");
     }
 
     private async void SetPrimary_Click(object sender, RoutedEventArgs e)
@@ -151,6 +145,9 @@ public partial class ManageCoversWindow : Window
 
     private async Task ExecuteAndReloadAsync(Func<Task> action, string errorTitle)
     {
+        if (_busy) return;
+        _busy = true;
+        IsEnabled = false;
         try
         {
             await action();
@@ -159,7 +156,12 @@ public partial class ManageCoversWindow : Window
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, errorTitle, MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, exception.Message, errorTitle, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsEnabled = true;
+            _busy = false;
         }
     }
 

@@ -89,6 +89,7 @@ public sealed class UiSmokeTests
 
                 AssertExplicitWorkSelection(context);
                 AssertCoverLoadFailure(context, application);
+                AssertCoverSaveFinishesBeforeClosing(context, application);
 
                 addExperience.Close();
                 addWork.Close();
@@ -182,6 +183,66 @@ public sealed class UiSmokeTests
             Assert.Equal(LibraryPageKind.Home, window.CurrentPage);
         }
         finally { window.Close(); }
+    }
+
+    private static void AssertCoverSaveFinishesBeforeClosing(TempDatabase context, Application application)
+    {
+        var work = new MediaWork { Title = "cover-save-close", Kind = "book" };
+        context.Repository.AddWorkAsync(work).GetAwaiter().GetResult();
+        var imagePath = Path.Combine(context.Root, "cover-save.png");
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(BitmapSource.Create(1, 1, 96, 96,
+            PixelFormats.Bgr24, null, new byte[] { 0, 0, 0 }, 3)));
+        using (var output = File.Create(imagePath)) encoder.Save(output);
+
+        var window = new ManageCoversWindow(context.Repository.Covers, work);
+        var previousContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(application.Dispatcher));
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var execute = typeof(ManageCoversWindow).GetMethod("ExecuteAndReloadAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        try
+        {
+            window.Show();
+            Func<Task> save = async () =>
+            {
+                await release.Task;
+                await context.Repository.Covers.AddCoversAsync(work.Id, new[] { imagePath });
+            };
+            var operation = (Task)execute.Invoke(window, new object[] { save, "save failed" })!;
+            Assert.False(window.IsEnabled);
+            window.Close();
+            Assert.True(window.IsVisible);
+            Assert.False(window.HasChanges);
+
+            var secondActionRan = false;
+            Func<Task> secondAction = () => { secondActionRan = true; return Task.CompletedTask; };
+            ((Task)execute.Invoke(window, new object[] { secondAction, "save failed" })!).GetAwaiter().GetResult();
+            Assert.False(secondActionRan);
+
+            release.SetResult();
+            var frame = new DispatcherFrame();
+            var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            timeout.Tick += (_, _) => frame.Continue = false;
+            timeout.Start();
+            _ = operation.ContinueWith(_ => application.Dispatcher.BeginInvoke(new Action(() => frame.Continue = false)));
+            Dispatcher.PushFrame(frame);
+            timeout.Stop();
+            Assert.True(operation.IsCompleted);
+            operation.GetAwaiter().GetResult();
+            Assert.True(window.HasChanges);
+            Assert.True(window.IsEnabled);
+            Assert.Single(window.Covers);
+            Assert.Single(context.Repository.Covers.GetCoversAsync(work.Id).GetAwaiter().GetResult());
+            window.Close();
+            Assert.False(window.IsVisible);
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
     }
 
     private static void AssertCoverLoadFailure(TempDatabase context, Application application)
