@@ -20,6 +20,7 @@ public sealed class ShowcaseCard(DashboardShowcaseItem value)
     public string KindGlyph => Kind == "book" ? "书" : "影";
     public string RankLabel => AggregateRank is null ? "未评分" : AggregateRank.Value.ToString("0.0");
     public string RankMaximumLabel => AggregateRank is null ? string.Empty : $"/ {RatingScale.RankMaximum:0.0}";
+    public string RatingEvidenceLabel => $"{RankLabel} {RankMaximumLabel} · {RatingCount} 次完整评分";
     public string CompletionLabel => CompletionCount == 1 ? "完成 1 次" : $"完成 {CompletionCount} 次";
     public string LatestDateLabel => LatestCompletedOn.ToString("yyyy.MM.dd");
 }

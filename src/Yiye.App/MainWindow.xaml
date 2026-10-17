@@ -18,5 +18,5 @@
  <views:DashboardView x:Name="DashboardPage"/>
  <views:LibraryView x:Name="LibraryPage" Visibility="Collapsed"/>
  <views:WorkDetailView x:Name="DetailPage" Visibility="Collapsed"/>
- </Grid></Grid></Grid>
+ </Grid></Grid><Canvas x:Name="CoverTransitionLayer" Grid.RowSpan="2" IsHitTestVisible="False" Panel.ZIndex="10" ClipToBounds="True"/></Grid>
 </ui:FluentWindow>

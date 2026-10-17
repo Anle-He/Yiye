@@ -6,6 +6,21 @@ namespace Yiye.Tests;
 public sealed class RatingScaleTests
 {
     [Fact]
+    public void ScoreDescriptions_PreserveDistinctWorkAndAuthorScales()
+    {
+        var work = new ShowcaseCard(new DashboardShowcaseItem
+            { WorkId = "scale", Title = "scale", Kind = "book", AggregateRank = 3.5, RatingCount = 2 });
+        var author = new AuthorCard(new DashboardAuthorRank
+            { Author = "author", Position = 1, WorkCount = 2, RatingCount = 3, WeightedRank = 4.0 });
+        Assert.Contains("3.9", ScorePresentation.WorkScaleLabel);
+        Assert.Contains("5.0", ScorePresentation.AuthorScaleLabel);
+        Assert.Equal("3.5 / 3.9 · 2 次完整评分", work.RatingEvidenceLabel);
+        Assert.Equal("2 本书 · 3 次评分", author.SampleLabel);
+        Assert.Contains("2 次评分", ScorePresentation.GuideText);
+        Assert.Contains("Allure × 1.5", ScorePresentation.GuideText);
+    }
+
+    [Fact]
     public void Calculate_UsesTheDocumentedMaximum()
     {
         Assert.Equal(RatingScale.RankMaximum, RatingScale.Calculate(3, 5, 5, 5));

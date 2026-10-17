@@ -53,7 +53,7 @@ internal sealed class TempDatabase : IAsyncDisposable
         return (long)(await command.ExecuteScalarAsync() ?? 0L);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         var resolvedRoot = Path.GetFullPath(Root);
         var tempRoot = Path.GetFullPath(Path.GetTempPath());
@@ -62,7 +62,19 @@ internal sealed class TempDatabase : IAsyncDisposable
         {
             throw new InvalidOperationException("Refusing to remove an unexpected test directory.");
         }
-        Directory.Delete(resolvedRoot, recursive: true);
-        return ValueTask.CompletedTask;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(resolvedRoot, recursive: true);
+                return;
+            }
+            catch (IOException exception) when (attempt < 5 && (exception.HResult & 0xffff) is 32 or 33)
+            {
+                // Windows can release a closed SQLite file handle after the dispose continuation.
+                // A persistent handle leak still fails after the bounded retry.
+                await Task.Delay(100);
+            }
+        }
     }
 }

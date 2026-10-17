@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using Yiye.Models;
 using Yiye.Presentation;
+using Yiye.Controls;
+using System.Windows.Media;
 namespace Yiye.Views;
 
 public partial class LibraryView : UserControl
@@ -10,6 +12,10 @@ public partial class LibraryView : UserControl
     private IReadOnlyList<MediaWork> _works = [];
     private CancellationTokenSource? _search;
     private bool _refreshing;
+    private double _workOffset;
+    private readonly CoverMotion _coverMotion = new();
+    public string ReturnLabel => Selection.ExpandedMonthKey is { } key && LibraryMonths.FirstOrDefault(month => month.Key == key) is { } month
+        ? $"返回 {month.Label}" : "返回藏品";
     public LibrarySelection Selection { get; } = new();
     public ObservableCollection<WorkCard> VisibleWorks { get; } = [];
     public ObservableCollection<LibraryMonth> LibraryMonths { get; } = [];
@@ -20,7 +26,8 @@ public partial class LibraryView : UserControl
     {
         InitializeComponent();
         DataContext = this;
-        Unloaded += (_, _) => CancelSearch();
+        Unloaded += (_, _) => { CancelSearch(); _coverMotion.Cancel(); };
+        SizeChanged += (_, _) => _coverMotion.Cancel();
     }
     public void SetWorks(IReadOnlyList<MediaWork> works)
     {
@@ -38,6 +45,7 @@ public partial class LibraryView : UserControl
     }
     public void ApplyFilters()
     {
+        _coverMotion.Cancel();
         Selection.SetFilter(Selection.Kind, SearchBox.Text);
         VisibleWorks.Clear();
         foreach (var work in Selection.Filter(_works)) VisibleWorks.Add(work);
@@ -71,16 +79,53 @@ public partial class LibraryView : UserControl
     }
     public void OpenMonth(string key)
     {
+        _coverMotion.Cancel();
+        var first = LibraryMonths.FirstOrDefault(month => month.Key == key)?.Works.FirstOrDefault();
+        var image = first is null ? null : CoverMotion.Find(MonthList, first.Id);
+        var from = CoverMotion.Bounds(image, MonthTransitionLayer);
         Selection.Expand(key);
         RefreshMonths();
         WorkList.UpdateLayout();
         if (ExpandedMonthWorks.Count > 0) WorkList.ScrollIntoView(ExpandedMonthWorks[0]);
         MonthBackButton.Focus();
+        if (first is not null)
+        {
+            WorkList.UpdateLayout();
+            _coverMotion.Play(MonthTransitionLayer, from, CoverMotion.Find(WorkList, first.Id), image?.Source);
+        }
+    }
+    public void RememberPosition(string workId)
+    {
+        _coverMotion.Cancel();
+        _workOffset = FindScroll(WorkList)?.VerticalOffset ?? 0;
+    }
+    public void RestorePosition(string workId)
+    {
+        WorkList.UpdateLayout();
+        FindScroll(WorkList)?.ScrollToVerticalOffset(_workOffset);
+        var work = ExpandedMonthWorks.FirstOrDefault(item => item.Id == workId);
+        if (work is not null && WorkList.ItemContainerGenerator.ContainerFromItem(work) is ListBoxItem container)
+        {
+            _refreshing = true;
+            try { container.Focus(); WorkList.SelectedItem = null; }
+            finally { _refreshing = false; }
+        }
+    }
+    private static ScrollViewer? FindScroll(DependencyObject root)
+    {
+        if (root is ScrollViewer scroll) return scroll;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            if (FindScroll(VisualTreeHelper.GetChild(root, index)) is { } found) return found;
+        return null;
     }
     private void OpenLibraryMonth_Click(object sender, RoutedEventArgs e)
     { if (sender is Button { Tag: LibraryMonth month }) OpenMonth(month.Key); }
     private void CloseLibraryMonth_Click(object sender, RoutedEventArgs e)
     {
+        _coverMotion.Cancel();
+        var first = ExpandedMonthWorks.FirstOrDefault();
+        var image = first is null ? null : CoverMotion.Find(WorkList, first.Id);
+        var from = CoverMotion.Bounds(image, MonthTransitionLayer);
         var key = Selection.ExpandedMonthKey;
         Selection.Expand(null);
         RefreshMonths();
@@ -91,6 +136,8 @@ public partial class LibraryView : UserControl
             presenter.ApplyTemplate();
             (MonthList.ItemTemplate.FindName("MonthDeckButton", presenter) as Button)?.Focus();
         }
+        if (first is not null)
+            _coverMotion.Play(MonthTransitionLayer, from, CoverMotion.Find(MonthList, first.Id), image?.Source);
     }
     private void AddWork_Click(object sender, RoutedEventArgs e) => AddRequested?.Invoke();
     private void WorkList_SelectionChanged(object sender, SelectionChangedEventArgs e)

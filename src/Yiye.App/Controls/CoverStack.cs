@@ -10,9 +10,13 @@ namespace Yiye.Controls;
 
 public sealed class CoverStack : Canvas
 {
+    public FrameworkElement? PrimaryCover { get; private set; }
+    public ImageSource? PrimaryImageSource { get; private set; }
     public void Render(MediaWork? work, IReadOnlyList<WorkCover> covers)
     {
         Children.Clear();
+        PrimaryCover = null;
+        PrimaryImageSource = null;
         if (work is null || covers.Count == 0)
         {
             var placeholder = new Border
@@ -36,6 +40,7 @@ public sealed class CoverStack : Canvas
             Canvas.SetLeft(placeholder, 8);
             Canvas.SetTop(placeholder, 5);
             Children.Add(placeholder);
+            PrimaryCover = placeholder;
             AddCoverBadge("+");
             return;
         }
@@ -76,6 +81,7 @@ public sealed class CoverStack : Canvas
             Canvas.SetLeft(card, left);
             Canvas.SetTop(card, top);
             Children.Add(card);
+            if (position == 0) { PrimaryCover = card; PrimaryImageSource = image.Source; }
         }
         if (covers.Count > 1)
         {

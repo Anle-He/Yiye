@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Media.Animation;
+using System.Windows.Input;
+using Yiye.Controls;
 using Yiye.Operations;
 using Yiye.Data;
 using Yiye.Models;
@@ -15,6 +17,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private string? _selectedWorkId;
     private bool _initialized;
     private bool _busy;
+    private LibraryPageKind _detailOrigin = LibraryPageKind.Home;
+    private readonly CoverMotion _coverMotion = new();
     public Views.DashboardView HomeView => DashboardPage;
     public Views.LibraryView LibraryView => LibraryPage;
     public Views.WorkDetailView DetailView => DetailPage;
@@ -33,8 +37,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DetailPage.EditRequested += EditWork;
         DetailPage.DeleteRequested += DeleteWork;
         DetailPage.CoversRequested += ManageCovers;
+        DetailPage.BackRequested += GoBack;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (!_busy && CurrentPage == LibraryPageKind.Detail &&
+                (e.Key == Key.BrowserBack || (e.SystemKey == Key.Left && Keyboard.Modifiers == ModifierKeys.Alt)))
+            { GoBack(); e.Handled = true; }
+        };
+        SizeChanged += (_, _) => _coverMotion.Cancel();
         Loaded += async (_, _) => await RunAsync(InitializeLibraryAsync, "无法打开本地作品库");
-        Closed += (_, _) => _navigationVersion++;
+        Closed += (_, _) => { _navigationVersion++; _coverMotion.Cancel(); };
     }
     public async Task InitializeLibraryAsync()
     {
@@ -54,6 +66,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
     private void Navigate(LibraryPageKind page)
     {
+        _coverMotion.Cancel();
         _navigationVersion++;
         CurrentPage = page;
         _selectedWorkId = null;
@@ -65,8 +78,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DashboardPage.Visibility = page == LibraryPageKind.Home ? Visibility.Visible : Visibility.Collapsed;
         LibraryPage.Visibility = page == LibraryPageKind.Library ? Visibility.Visible : Visibility.Collapsed;
         DetailPage.Visibility = page == LibraryPageKind.Detail ? Visibility.Visible : Visibility.Collapsed;
-        HomeButton.Appearance = page == LibraryPageKind.Home ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
-        LibraryButton.Appearance = page == LibraryPageKind.Library ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
+        var section = page == LibraryPageKind.Detail ? _detailOrigin : page;
+        HomeButton.Appearance = section == LibraryPageKind.Home ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
+        LibraryButton.Appearance = section == LibraryPageKind.Library ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
         if (IsLoaded && SystemParameters.ClientAreaAnimation)
         {
             FrameworkElement view = page switch { LibraryPageKind.Home => DashboardPage, LibraryPageKind.Library => LibraryPage, _ => DetailPage };
@@ -76,6 +90,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
     public async Task OpenWorkAsync(string workId)
     {
+        _coverMotion.Cancel();
+        var opening = CurrentPage != LibraryPageKind.Detail;
+        var detailOffset = !opening && _selectedWorkId == workId ? DetailPage.ScrollOffset : 0;
+        if (opening) _detailOrigin = CurrentPage;
+        FrameworkElement origin = _detailOrigin == LibraryPageKind.Library ? LibraryPage : DashboardPage;
+        var image = opening ? CoverMotion.Find(origin, workId) : null;
+        var from = CoverMotion.Bounds(image, CoverTransitionLayer);
+        if (opening && _detailOrigin == LibraryPageKind.Library) LibraryPage.RememberPosition(workId);
+        if (opening && _detailOrigin == LibraryPageKind.Home) DashboardPage.RememberPosition();
         var version = ++_navigationVersion;
         _selectedWorkId = workId;
         CurrentPage = LibraryPageKind.Detail;
@@ -84,7 +107,27 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var detail = await _library.LoadWorkAsync(workId);
         if (version != _navigationVersion || _selectedWorkId != workId) return;
         if (detail is null) { ShowLibrary(); return; }
+        DetailPage.SetReturnPath(_detailOrigin == LibraryPageKind.Library ? LibraryPage.ReturnLabel : "返回首页");
         DetailPage.Render(detail);
+        DetailPage.UpdateLayout();
+        DetailPage.RestoreScroll(detailOffset);
+        DetailPage.UpdateLayout();
+        _coverMotion.Play(CoverTransitionLayer, from, DetailPage.CoverAnchor, image?.Source);
+    }
+    public void GoBack()
+    {
+        if (CurrentPage != LibraryPageKind.Detail || _busy) return;
+        _coverMotion.Cancel();
+        var workId = _selectedWorkId;
+        var from = CoverMotion.Bounds(DetailPage.CoverAnchor, CoverTransitionLayer);
+        var source = DetailPage.CoverImageSource;
+        Navigate(_detailOrigin);
+        FrameworkElement destination = _detailOrigin == LibraryPageKind.Library ? LibraryPage : DashboardPage;
+        destination.UpdateLayout();
+        if (workId is null) return;
+        if (_detailOrigin == LibraryPageKind.Library) LibraryPage.RestorePosition(workId);
+        else DashboardPage.RestorePosition(workId);
+        _coverMotion.Play(CoverTransitionLayer, from, CoverMotion.Find(destination, workId), source);
     }
     public async Task ApplyChangeAsync(WorkChange change)
     {

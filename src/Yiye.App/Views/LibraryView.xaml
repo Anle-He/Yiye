@@ -109,11 +109,12 @@
                     </ScrollViewer>
                     <ListBox x:Name="WorkList" Visibility="Collapsed" ItemsSource="{Binding ExpandedMonthWorks}" Background="Transparent" BorderThickness="0" Padding="0" SelectionChanged="WorkList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="False" behaviors:SmoothScroll.IsEnabled="True">
                         <ListBox.ItemsPanel><ItemsPanelTemplate><shelf:LibraryShelfPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
-                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Paper" Padding="8" Background="{StaticResource SurfaceBrush}" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Paper" Padding="8" Background="{StaticResource SurfaceBrush}" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Paper" Property="Background" Value="{StaticResource AccentSoftBrush}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate><StaticResource ResourceKey="ShelfWorkTemplate" /></ListBox.ItemTemplate>
                     </ListBox>
                 </Grid>
             </Grid>
 
-            </Grid>
+            <Canvas x:Name="MonthTransitionLayer" IsHitTestVisible="False" Panel.ZIndex="10" ClipToBounds="True"/>
+</Grid>
 </UserControl>

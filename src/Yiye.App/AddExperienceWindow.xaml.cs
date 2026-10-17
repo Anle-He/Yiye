@@ -18,6 +18,14 @@ public partial class AddExperienceWindow : Window
         _kind = kind;
         _existing = existing;
         InitializeComponent();
+        Loaded += (_, _) =>
+        {
+            var area = SystemParameters.WorkArea;
+            Width = Math.Min(920, Math.Max(MinWidth, (Owner?.ActualWidth ?? area.Width) - 40));
+            Height = Math.Min(650, Math.Max(MinHeight, (Owner?.ActualHeight ?? area.Height) - 40));
+            MaxWidth = Math.Max(MinWidth, area.Width);
+            MaxHeight = Math.Max(MinHeight, area.Height);
+        };
         var editingCompleted = existing?.CompletedOn is not null;
         HeadingText.Text = editingCompleted
             ? (kind == "book" ? "编辑本次阅读" : "编辑本次观看")
@@ -51,6 +59,19 @@ public partial class AddExperienceWindow : Window
 
     public MediaExperience? Experience { get; private set; }
     public bool DeleteRequested { get; private set; }
+
+    private void Form_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var wide = e.NewSize.Width >= 760;
+        CompletionPanel.ColumnDefinitions[1].Width = new GridLength(wide ? 20 : 0);
+        CompletionPanel.ColumnDefinitions[2].Width = wide ? new GridLength(1.1, GridUnitType.Star) : new GridLength(0);
+        Grid.SetColumn(RatingSection, wide ? 2 : 0);
+        Grid.SetRow(RatingSection, wide ? 0 : 1);
+        Grid.SetRowSpan(RatingSection, wide ? 3 : 1);
+        Grid.SetRow(NotesSection, wide ? 1 : 2);
+        Grid.SetRow(HistoricalProgressPanel, wide ? 2 : 3);
+        RatingSection.Margin = wide ? new Thickness() : new Thickness(0, 14, 0, 0);
+    }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {

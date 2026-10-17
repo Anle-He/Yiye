@@ -8,6 +8,8 @@ namespace Yiye.Views;
 
 public partial class DashboardView : UserControl
 {
+    private double _returnOffset;
+    private Button? _returnAction;
     public ObservableCollection<DashboardTimelineDay> DashboardTimelineDays { get; } = [];
     public ObservableCollection<ShowcaseCard> DashboardTopBooks { get; } = [];
     public ObservableCollection<ShowcaseCard> DashboardTopScreens { get; } = [];
@@ -18,6 +20,7 @@ public partial class DashboardView : UserControl
     public DashboardView() { InitializeComponent(); DataContext = this; }
     public void Render(IReadOnlyList<MediaWork> works, DashboardSnapshot snapshot)
     {
+        var recentSelection = (RecentWorkPicker.SelectedItem as ShowcaseCard)?.WorkId;
         DashboardTimelineDays.Clear();
         foreach (var day in snapshot.Timeline.GroupBy(item => item.LoggedOn))
             DashboardTimelineDays.Add(new DashboardTimelineDay { Date = day.Key, Items = day.Select(item => new TimelineCard(item)).ToArray() });
@@ -39,12 +42,33 @@ public partial class DashboardView : UserControl
         foreach (var item in snapshot.Showcase.CompletedWorks.OrderByDescending(item => item.LatestCompletedOn).Take(3)) DashboardRecentWorks.Add(new(item));
         DashboardTopAuthors.Clear();
         foreach (var item in snapshot.Showcase.TopAuthors) DashboardTopAuthors.Add(new(item));
-        RecentWorkPicker.SelectedIndex = DashboardRecentWorks.Count > 0 ? 0 : -1;
+        RecentWorkPicker.SelectedIndex = DashboardRecentWorks.ToList().FindIndex(card => card.WorkId == recentSelection);
+        if (RecentWorkPicker.SelectedIndex < 0 && DashboardRecentWorks.Count > 0) RecentWorkPicker.SelectedIndex = 0;
         DashboardShowcasePanel.Visibility = works.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
     private void AddWork_Click(object sender, RoutedEventArgs e) => AddRequested?.Invoke();
+    public void RememberPosition() => _returnOffset = DashboardScroll.VerticalOffset;
+    public void RestorePosition(string workId)
+    {
+        DashboardScroll.ScrollToVerticalOffset(_returnOffset);
+        if (_returnAction is { IsVisible: true }) _returnAction.Focus();
+        else FindReturnAction(this, workId)?.Focus();
+    }
+    private static Button? FindReturnAction(DependencyObject root, string workId)
+    {
+        if (root is Button button && button.Tag switch
+        {
+            TimelineCard card => card.WorkId == workId,
+            ShowcaseCard card => card.WorkId == workId,
+            _ => false
+        }) return button;
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); index++)
+            if (FindReturnAction(System.Windows.Media.VisualTreeHelper.GetChild(root, index), workId) is { } found) return found;
+        return null;
+    }
     private void DashboardWork_Open(object sender, RoutedEventArgs e)
     {
+        _returnAction = sender as Button;
         var id = (sender as FrameworkElement)?.Tag switch { TimelineCard item => item.WorkId, ShowcaseCard item => item.WorkId, _ => null };
         if (id is not null) WorkRequested?.Invoke(id);
     }

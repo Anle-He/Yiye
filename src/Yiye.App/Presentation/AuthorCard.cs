@@ -14,5 +14,6 @@ public sealed class AuthorCard(DashboardAuthorRank value)
 
     public string PositionLabel => Position.ToString("00");
     public string WeightedRankLabel => WeightedRank.ToString("0.0");
+    public string SampleLabel => $"{WorkCount} 本书 · {RatingCount} 次评分";
     public string EvidenceLabel => $"{WorkCount} 本书 · {RatingCount} 次完整评分 · 满分 {ScoreMaximum:0.0}";
 }

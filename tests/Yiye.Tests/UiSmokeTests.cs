@@ -90,6 +90,7 @@ public sealed class UiSmokeTests
                 AssertExplicitWorkSelection(context);
                 AssertCoverLoadFailure(context, application);
                 AssertCoverSaveFinishesBeforeClosing(context, application);
+                AssertNavigationAndAdaptiveLayout(context);
 
                 addExperience.Close();
                 addWork.Close();
@@ -183,6 +184,123 @@ public sealed class UiSmokeTests
             Assert.Equal(LibraryPageKind.Home, window.CurrentPage);
         }
         finally { window.Close(); }
+    }
+
+    private static void AssertNavigationAndAdaptiveLayout(TempDatabase context)
+    {
+        var works = Enumerable.Range(1, 20).Select(index => new MediaWork
+            { Title = $"navigation-{index:00}", Kind = "book", Subtitle = index == 1 ? "康熙废储与正史虚构" : null,
+              Author = index == 1 ? "孙立天" : null }).ToArray();
+        foreach (var work in works)
+        {
+            context.Repository.AddWorkAsync(work).GetAwaiter().GetResult();
+            context.Repository.AddExperienceAsync(new MediaExperience
+            {
+                WorkId = work.Id, CompletedOn = new DateOnly(2026, 9, 20),
+                Allure = 3, Immersion = 4, Rationality = 5, Illumination = 4
+            }).GetAwaiter().GetResult();
+        }
+        // Exercise motion with an actual cover, and navigation without one.
+        var imagePath = Path.Combine(context.Root, "cover-save.png");
+        context.Repository.Covers.AddCoversAsync(works[0].Id, new[] { imagePath }).GetAwaiter().GetResult();
+        var window = new MainWindow(new LibraryApplication(context.Database));
+        try
+        {
+            window.InitializeLibraryAsync().GetAwaiter().GetResult();
+            window.Show();
+            window.Width = 1280; window.Height = 800;
+            window.ShowLibrary();
+            window.LibraryView.SetFilter("book", "navigation");
+            window.LibraryView.OpenMonth("2026-09");
+            window.UpdateLayout();
+            window.OpenWorkAsync(works[0].Id).GetAwaiter().GetResult();
+            var transitionLayer = (Canvas)window.FindName("CoverTransitionLayer");
+            if (SystemParameters.ClientAreaAnimation) Assert.Single(transitionLayer.Children.Cast<UIElement>());
+            SettleAnimations();
+            Assert.Empty(transitionLayer.Children.Cast<UIElement>());
+            Assert.Equal(0, ((ScrollViewer)Find(window, "DetailScroll")).ScrollableHeight);
+            Assert.Equal(Wpf.Ui.Controls.ControlAppearance.Primary, ((Wpf.Ui.Controls.Button)Find(window, "LibraryButton")).Appearance);
+            Assert.Contains("2026", ((Button)Find(window, "BackButton")).Content.ToString());
+            window.GoBack();
+            Assert.Equal(LibraryPageKind.Library, window.CurrentPage);
+            Assert.Equal("2026-09", window.LibraryView.Selection.ExpandedMonthKey);
+            Assert.Equal("navigation", window.LibraryView.Selection.Query);
+            Assert.Equal("book", window.LibraryView.Selection.Kind);
+            var list = (ListBox)Find(window, "WorkList");
+            Assert.Null(list.SelectedItem);
+            window.UpdateLayout();
+            var scroll = Descendants(list).OfType<ScrollViewer>().Single();
+            scroll.ScrollToEnd(); window.UpdateLayout();
+            var offset = scroll.VerticalOffset;
+            Assert.True(offset > 0);
+            window.OpenWorkAsync(works[^1].Id).GetAwaiter().GetResult();
+            window.GoBack(); window.UpdateLayout();
+            Assert.Equal(offset, scroll.VerticalOffset, 1);
+
+            window.OpenWorkAsync(works[0].Id).GetAwaiter().GetResult();
+            window.Width = 980; window.Height = 640; window.UpdateLayout();
+            Assert.True(window.DetailView.IsCompact);
+            Assert.Equal(1, Grid.GetRow((FrameworkElement)Find(window, "HeroActions")));
+            Assert.True(((Button)Find(window, "DetailCoverButton")).ActualHeight <= 150);
+            SettleAnimations();
+            SaveSnapshot(window, "navigation-detail-compact.png");
+            window.Width = 1400; window.Height = 900; window.UpdateLayout();
+            Assert.False(window.DetailView.IsCompact);
+            Assert.Equal(0, Grid.GetRow((FrameworkElement)Find(window, "HeroActions")));
+            SettleAnimations();
+            SaveSnapshot(window, "navigation-detail-wide.png");
+            window.ShowHome();
+            window.OpenWorkAsync(works[1].Id).GetAwaiter().GetResult();
+            Assert.Equal("返回首页", ((Button)Find(window, "BackButton")).Content);
+            Assert.Equal(Wpf.Ui.Controls.ControlAppearance.Primary, ((Wpf.Ui.Controls.Button)Find(window, "HomeButton")).Appearance);
+            window.GoBack();
+            Assert.Equal(LibraryPageKind.Home, window.CurrentPage);
+            var guide = (Expander)Find(window, "ScoreGuide");
+            guide.IsExpanded = true; window.UpdateLayout();
+            var frame = new DispatcherFrame();
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            window.UpdateLayout();
+            SettleAnimations();
+            Assert.Contains("3.9", guide.Header.ToString());
+            Assert.Contains("5.0", guide.Header.ToString());
+            Assert.Contains("先验权重", ((TextBlock)((Border)guide.Content).Child).Text);
+            Assert.Contains(Descendants(guide).OfType<TextBlock>(), text => text.Text.StartsWith("单次 Rank"));
+            SaveSnapshot(window, "score-guide.png");
+        }
+        finally { window.Close(); }
+
+        var dialog = new AddExperienceWindow(works[0].Id, "book");
+        try
+        {
+            dialog.Show(); dialog.Width = 920; dialog.Height = 650; dialog.UpdateLayout();
+            var rating = (FrameworkElement)dialog.FindName("RatingSection");
+            var notes = (FrameworkElement)dialog.FindName("NotesSection");
+            Assert.Equal(2, Grid.GetColumn(rating));
+            var viewport = (ScrollViewer)dialog.FindName("FormScroll");
+            var bounds = notes.TransformToAncestor(viewport).TransformBounds(new Rect(notes.RenderSize));
+            Assert.True(bounds.Bottom <= viewport.ActualHeight + 1, $"Summary must be visible: bottom={bounds.Bottom}, viewport={viewport.ActualHeight}");
+            ((TextBox)dialog.FindName("NotesBox")).Text = "保留这一次的总结";
+            ((ComboBox)dialog.FindName("AllureBox")).SelectedIndex = 3;
+            SaveSnapshot(dialog, "completion-wide.png");
+            dialog.Width = 580; dialog.Height = 600; dialog.UpdateLayout();
+            Assert.Equal(0, Grid.GetColumn(rating));
+            Assert.Equal(1, Grid.GetRow(rating));
+            Assert.Equal("保留这一次的总结", ((TextBox)dialog.FindName("NotesBox")).Text);
+            Assert.Equal(3, ((ComboBox)dialog.FindName("AllureBox")).SelectedIndex);
+            Assert.True(((Button)dialog.FindName("SaveButton")).IsVisible);
+            SaveSnapshot(dialog, "completion-narrow.png");
+        }
+        finally { dialog.Close(); }
+    }
+
+    private static void SettleAnimations()
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+        timer.Start();
+        Dispatcher.PushFrame(frame);
     }
 
     private static void AssertCoverSaveFinishesBeforeClosing(TempDatabase context, Application application)
