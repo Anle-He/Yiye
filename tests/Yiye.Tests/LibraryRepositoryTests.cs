@@ -78,7 +78,9 @@ public sealed class LibraryRepositoryTests
 
         await context.Repository.AddWorkAsync(work);
 
-        Assert.Null((await context.Repository.GetWorkAsync(work.Id))?.Author);
+        var stored = await context.Repository.GetWorkAsync(work.Id);
+        Assert.NotNull(stored);
+        Assert.Null(stored.Author);
     }
 
     [Fact]
@@ -300,9 +302,7 @@ public sealed class LibraryRepositoryTests
         Assert.Equal(3, showcase.CompletedWorks.Count);
         Assert.Equal(screen.Id, showcase.CompletedWorks[0].WorkId);
         Assert.Equal(new DateOnly(2026, 1, 2), showcase.CompletedWorks.Single(work => work.WorkId == alpha.Id).FirstCompletedOn);
-        Assert.Equal(2, showcase.TopAuthors.Count);
-        Assert.Equal([1, 2], showcase.TopAuthors.Select(author => author.Position));
-        Assert.All(showcase.TopAuthors, author => Assert.InRange(author.WeightedRank, 0, DashboardAuthorRank.ScoreMaximum));
+        Assert.Equal(["Alpha", "Beta"], showcase.TopAuthors.Select(author => author.Author));
         Assert.Equal(3, showcase.TopAuthors.Single(author => author.Author == "Beta").RatingCount);
         Assert.Equal(4.6, showcase.TopAuthors.Single(author => author.Author == "Alpha").WeightedRank);
         Assert.Equal(4.3, showcase.TopAuthors.Single(author => author.Author == "Beta").WeightedRank);

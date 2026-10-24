@@ -153,7 +153,7 @@ public sealed class DatabaseMigrationTests
                 await current.OpenAsync();
                 Assert.Equal(3L, await ScalarInt64Async(current, "PRAGMA user_version;"));
                 Assert.Equal(3L, await ScalarInt64Async(current, "SELECT allure FROM experiences WHERE id='experience-1';"));
-                Assert.Equal(1L, await ScalarInt64Async(current, "SELECT COUNT(*) FROM progress_entries WHERE experience_id='experience-1';"));
+                await AssertFixtureContentPreservedAsync(current);
 
                 var invalid = current.CreateCommand();
                 invalid.CommandText = "UPDATE experiences SET allure=4 WHERE id='experience-1';";
@@ -163,7 +163,9 @@ public sealed class DatabaseMigrationTests
             var backupConnectionString = new SqliteConnectionStringBuilder { DataSource = database.MigrationBackupPath }.ToString();
             await using var backup = new SqliteConnection(backupConnectionString);
             await backup.OpenAsync();
+            Assert.Equal(0L, await ScalarInt64Async(backup, "PRAGMA user_version;"));
             Assert.Equal(5L, await ScalarInt64Async(backup, "SELECT allure FROM experiences WHERE id='experience-1';"));
+            await AssertFixtureContentPreservedAsync(backup);
         }
         finally
         {
@@ -240,9 +242,16 @@ public sealed class DatabaseMigrationTests
                 logged_on TEXT NOT NULL, metric TEXT NOT NULL, amount INTEGER NOT NULL,
                 notes TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
             );
-            INSERT INTO works VALUES ('work-1', 'migration-test', NULL, 'book', 'completed', NULL, '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
-            INSERT INTO experiences VALUES ('experience-1', 'work-1', '2026-08-01', '2026-08-02', 5, 5, 5, 5, NULL, '2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z');
-            INSERT INTO progress_entries VALUES ('progress-1', 'experience-1', '2026-08-01', 'duration', 30, NULL, '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
+            CREATE TABLE work_covers (
+                id TEXT PRIMARY KEY,
+                work_id TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+                file_name TEXT NOT NULL, sort_order INTEGER NOT NULL, created_at TEXT NOT NULL,
+                UNIQUE (work_id, file_name)
+            );
+            INSERT INTO works VALUES ('work-1', 'migration-test', 'original subtitle', 'book', 'completed', NULL, '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
+            INSERT INTO experiences VALUES ('experience-1', 'work-1', '2026-08-01', '2026-08-02', 5, 5, 5, 5, 'experience notes', '2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z');
+            INSERT INTO progress_entries VALUES ('progress-1', 'experience-1', '2026-08-01', 'duration', 30, 'progress notes', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
+            INSERT INTO work_covers VALUES ('cover-1', 'work-1', 'original.jpg', 0, '2026-08-01T00:00:00Z');
             """;
         await command.ExecuteNonQueryAsync();
     }
@@ -305,6 +314,22 @@ public sealed class DatabaseMigrationTests
             );
             """;
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task AssertFixtureContentPreservedAsync(SqliteConnection connection)
+    {
+        Assert.Equal("migration-test|original subtitle", await ScalarAsync(connection,
+            "SELECT title || '|' || subtitle FROM works WHERE id='work-1';"));
+        Assert.Equal("work-1|2026-08-01|2026-08-02|experience notes", await ScalarAsync(connection,
+            "SELECT work_id || '|' || started_on || '|' || completed_on || '|' || notes FROM experiences WHERE id='experience-1';"));
+        Assert.Equal("experience-1|2026-08-01|duration|30|progress notes", await ScalarAsync(connection,
+            "SELECT experience_id || '|' || logged_on || '|' || metric || '|' || amount || '|' || notes FROM progress_entries WHERE id='progress-1';"));
+        Assert.Equal("work-1|original.jpg|0", await ScalarAsync(connection,
+            "SELECT work_id || '|' || file_name || '|' || sort_order FROM work_covers WHERE id='cover-1';"));
+        var foreignKeys = connection.CreateCommand();
+        foreignKeys.CommandText = "PRAGMA foreign_key_check;";
+        await using var violations = await foreignKeys.ExecuteReaderAsync();
+        Assert.False(await violations.ReadAsync());
     }
 
     private static async Task<long> ScalarInt64Async(SqliteConnection connection, string sql)

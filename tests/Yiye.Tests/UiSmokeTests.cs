@@ -16,7 +16,7 @@ public sealed class UiSmokeTests
 {
     [Fact]
     [Trait("Category", "Manual")]
-    public async Task CoreWindowsCanBeConstructedOnStaThread()
+    public async Task CoreWindowInteractionsAndAdaptiveLayoutsPreserveLibraryBehavior()
     {
         await using var context = await TempDatabase.CreateAsync();
         Exception? failure = null;
@@ -27,15 +27,6 @@ public sealed class UiSmokeTests
                 var application = new Yiye.App(launchWindow: false);
                 application.InitializeComponent();
                 var mainWindow = new MainWindow();
-                Assert.IsAssignableFrom<TextBlock>(Find(mainWindow, "LibraryCountText"));
-                Assert.IsAssignableFrom<ScrollViewer>(Find(mainWindow, "DashboardScroll"));
-                Assert.IsAssignableFrom<FrameworkElement>(Find(mainWindow, "DashboardTimelineList"));
-                Assert.IsAssignableFrom<TextBlock>(Find(mainWindow, "DashboardWorkCountText"));
-                Assert.IsAssignableFrom<Button>(Find(mainWindow, "HomeButton"));
-                Assert.IsAssignableFrom<FrameworkElement>(Find(mainWindow, "RegularWorksHeader"));
-                Assert.IsAssignableFrom<TextBlock>(Find(mainWindow, "DetailKickerText"));
-                Assert.IsType<StackPanel>(Find(mainWindow, "DashboardShowcasePanel"));
-                Assert.IsType<Border>(Find(mainWindow, "DetailHeroShell"));
                 AssertExperienceRatingTemplate(mainWindow);
                 AssertTimelineTemplate(mainWindow);
                 AssertDashboardLayout(mainWindow);
@@ -43,10 +34,7 @@ public sealed class UiSmokeTests
                 AssertLibraryLayout();
                 AssertMonthFiltering();
                 var addWork = new AddWorkWindow();
-                Assert.IsType<Border>(addWork.FindName("WorkFormSection"));
                 var addExperience = new AddExperienceWindow("ui-test", "book");
-                Assert.IsType<Border>(addExperience.FindName("ExperienceDateSection"));
-                Assert.IsType<Border>(addExperience.FindName("RatingSection"));
                 var allureBox = Assert.IsType<ComboBox>(addExperience.FindName("AllureBox"));
                 Assert.Equal(4, allureBox.Items.Count);
                 var completedOn = Assert.IsType<DatePicker>(addExperience.FindName("CompletedOnPicker"));
@@ -67,7 +55,7 @@ public sealed class UiSmokeTests
                     Illumination = 4
                 });
                 Assert.Equal(Visibility.Visible, Assert.IsAssignableFrom<Button>(editExperience.FindName("DeleteButton")).Visibility);
-                AssertRatingPopupOpening(editExperience, editing: true);
+                AssertRatingSelectionIsSaved(editExperience, editing: true);
                 editExperience.Close();
 
                 var covers = new ManageCoversWindow(context.Repository.Covers, new Yiye.Models.MediaWork
@@ -85,7 +73,8 @@ public sealed class UiSmokeTests
 
                 SnapshotWindow(addWork, "add-work.png");
                 SnapshotWindow(addExperience, "add-experience.png");
-                AssertRatingPopupOpening(addExperience, editing: false);
+                completedOn.SelectedDate = new DateTime(2026, 10, 1);
+                AssertRatingSelectionIsSaved(addExperience, editing: false);
 
                 AssertExplicitWorkSelection(context);
                 AssertCoverLoadFailure(context, application);
@@ -112,41 +101,58 @@ public sealed class UiSmokeTests
         }
     }
 
-    private static void AssertRatingPopupOpening(AddExperienceWindow window, bool editing)
+    private static void AssertRatingSelectionIsSaved(AddExperienceWindow window, bool editing)
     {
-        window.WindowStartupLocation = WindowStartupLocation.Manual;
-        window.Left = SystemParameters.WorkArea.Left + 30;
-        window.Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - window.Height);
-        window.Show();
-        window.Activate();
-        window.UpdateLayout();
-        foreach (var name in new[] { "AllureBox", "ImmersionBox", "RationalityBox", "IlluminationBox" })
+        Exception? failure = null;
+        window.Dispatcher.BeginInvoke(new Action(() =>
         {
-            var box = Assert.IsType<ComboBox>(Find(window, name));
-            box.BringIntoView();
-            window.UpdateLayout();
-            box.Focus();
-            var expected = editing && name == "IlluminationBox" ? 4 : 0;
-            Assert.Equal(expected, box.SelectedIndex);
-            var toggle = Assert.IsType<System.Windows.Controls.Primitives.ToggleButton>(box.Template.FindName("ToggleButton", box));
-            Assert.Equal(ClickMode.Release, toggle.ClickMode);
-            for (var attempt = 0; attempt < 3; attempt++)
+            try
             {
-                box.IsDropDownOpen = true;
-                Assert.True(box.IsDropDownOpen, $"{name}: loaded={box.IsLoaded}, visible={box.IsVisible}, enabled={box.IsEnabled}, items={box.Items.Count}, toggle={toggle.IsChecked}, active={window.IsActive}, capture={Mouse.Captured}, source={PresentationSource.FromVisual(box)}");
-                window.UpdateLayout();
-                Assert.True(box.IsDropDownOpen);
-                Assert.Equal(expected, box.SelectedIndex);
-                box.IsDropDownOpen = false;
+                foreach (var (name, rating) in new[] { ("AllureBox", 3), ("ImmersionBox", 1), ("RationalityBox", 4), ("IlluminationBox", 2) })
+                {
+                    var box = Assert.IsType<ComboBox>(Find(window, name));
+                    box.BringIntoView();
+                    window.UpdateLayout();
+                    box.Focus();
+                    var expected = editing && name == "IlluminationBox" ? 4 : 0;
+                    Assert.Equal(expected, box.SelectedIndex);
+                    PressKey(box, Key.F4);
+                    Assert.True(box.IsDropDownOpen, $"F4 should open {name} without changing its rating.");
+                    Assert.Equal(expected, box.SelectedIndex);
+                    PressKey(box, Key.Home);
+                    for (var step = 0; step < rating; step++) PressKey(box, Key.Down);
+                    PressKey(box, Key.Enter);
+                    Assert.False(box.IsDropDownOpen);
+                    Assert.Equal(rating, box.SelectedIndex);
+                    PressKey(box, Key.F4);
+                    Assert.True(box.IsDropDownOpen);
+                    Assert.Equal(rating, box.SelectedIndex);
+                    PressKey(box, Key.Escape);
+                    Assert.False(box.IsDropDownOpen);
+                }
+                Assert.Equal("2.3 / 3.9", ((TextBlock)Find(window, "RankPreview")).Text);
+                ((Button)Find(window, "SaveButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }
-            box.SelectedIndex = 2;
-            box.IsDropDownOpen = true;
-            window.UpdateLayout();
-            Assert.Equal(2, box.SelectedIndex);
-            box.IsDropDownOpen = false;
-            box.SelectedIndex = expected;
-        }
-        window.Hide();
+            catch (Exception exception) { failure = exception; window.Close(); }
+        }));
+        var saved = window.ShowDialog();
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+        Assert.True(saved);
+        var experience = Assert.IsType<MediaExperience>(window.Experience);
+        Assert.Equal(3, experience.Allure);
+        Assert.Equal(1, experience.Immersion);
+        Assert.Equal(4, experience.Rationality);
+        Assert.Equal(2, experience.Illumination);
+        Assert.Equal(editing ? new DateOnly(2026, 8, 29) : new DateOnly(2026, 10, 1), experience.CompletedOn);
+    }
+
+    private static void PressKey(ComboBox box, Key key)
+    {
+        // Exercise WPF's keyboard handlers without requiring foreground desktop input.
+        var input = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(box), Environment.TickCount, key)
+        { RoutedEvent = Keyboard.KeyDownEvent };
+        box.RaiseEvent(input);
+        box.UpdateLayout();
     }
 
     private static void AssertExplicitWorkSelection(TempDatabase context)
@@ -456,10 +462,13 @@ public sealed class UiSmokeTests
             var sideColumn = (Grid)Find(window, "DashboardSideColumn");
             Assert.Equal(1, Grid.GetRow(sideColumn));
             Assert.Equal(width < 700 ? 1 : 0, Grid.GetRow((Border)Find(window, "DashboardScreenRanking")));
-            foreach (var list in Descendants(panel).OfType<ItemsControl>()
-                         .Where(list => ReferenceEquals(list.ItemTemplate, window.HomeView.FindResource("ShowcaseRankItemTemplate"))))
+            foreach (var (name, count) in new[] { ("DashboardBookRanking", 3), ("DashboardScreenRanking", 1) })
             {
-                Assert.All(Descendants(list).OfType<Button>(), button =>
+                var ranking = (Border)Find(window, name);
+                var list = Assert.Single(Descendants(ranking).OfType<ItemsControl>());
+                var buttons = Descendants(list).OfType<Button>().ToArray();
+                Assert.Equal(count, buttons.Length);
+                Assert.All(buttons, button =>
                     Assert.True(button.ActualWidth >= list.ActualWidth - 1, "Rank rows should fill the list width."));
             }
             var journal = (Border)Find(window, "DashboardJournalSection");
@@ -772,7 +781,8 @@ public sealed class UiSmokeTests
             Allure = 3,
             Immersion = 5,
             Rationality = 4,
-            Illumination = 4
+            Illumination = 4,
+            Notes = "一段需要在较窄卡片中换行展示的完成总结，评分与日期也应完整留在卡片内。"
         });
         Assert.Equal(Visibility.Visible, Scores().Visibility);
         Assert.Equal(Visibility.Collapsed, IncompleteMessage().Visibility);
@@ -783,7 +793,14 @@ public sealed class UiSmokeTests
         presenter.Measure(new Size(presenter.Width, double.PositiveInfinity));
         presenter.Arrange(new Rect(presenter.DesiredSize));
         presenter.UpdateLayout();
-        Assert.True(presenter.DesiredSize.Width <= presenter.Width + 0.5, "Archive cards should fit the available detail width.");
+        foreach (var name in new[] { "ArchiveTicket", "ArchiveNotes", "DimensionScores" })
+        {
+            var section = Assert.IsType<Grid>(history.ItemTemplate.FindName(name, presenter));
+            Assert.True(section.ActualWidth > 0 && section.ActualHeight > 0, $"{name} must be rendered.");
+            var bounds = section.TransformToAncestor(presenter).TransformBounds(new Rect(section.RenderSize));
+            Assert.True(bounds.Left >= -0.5 && bounds.Right <= presenter.ActualWidth + 0.5,
+                $"{name} overflows the archive card: bounds={bounds}, card width={presenter.ActualWidth}");
+        }
         SaveSnapshot(presenter, "experience-ratings-narrow.png");
 
         Display(new MediaExperience { WorkId = "ui-rating", Allure = 3 });

@@ -34,7 +34,8 @@ public sealed class HistoricalExperienceTests
             {
                 app = new App(launchWindow: false);
                 app.InitializeComponent();
-                window = new MainWindow(new LibraryApplication(context.Database));
+                var library = new LibraryApplication(context.Database);
+                window = new MainWindow(library);
                 window.InitializeLibraryAsync().GetAwaiter().GetResult();
                 window.OpenWorkAsync(work.Id).GetAwaiter().GetResult();
                 Assert.Equal(2, window.DetailView.UnfinishedExperiences.Count);
@@ -59,6 +60,7 @@ public sealed class HistoricalExperienceTests
                 window.OpenWorkAsync(work.Id).GetAwaiter().GetResult();
                 Assert.Equal(undated.Id, Assert.Single(window.DetailView.UnfinishedExperiences).Id);
                 Assert.Equal(active.Id, Assert.Single(window.DetailView.CompletedExperiences).Experience.Id);
+                AssertNewCompletionMovesWorkBetweenMonths(library, window);
             }
             catch (Exception exception) { failure = exception; }
             finally { dialog?.Close(); window?.Close(); app?.Shutdown(); }
@@ -72,5 +74,34 @@ public sealed class HistoricalExperienceTests
         await context.Repository.DeleteExperienceAsync(active.Id, work.Id);
         Assert.Empty(await context.Repository.GetHistoricalProgressAsync(active.Id));
         Assert.Equal(undated.Id, Assert.Single(await context.Repository.GetExperiencesAsync(work.Id)).Id);
+    }
+
+    private static void AssertNewCompletionMovesWorkBetweenMonths(LibraryApplication library, MainWindow window)
+    {
+        var work = new MediaWork { Title = "month transition", Kind = "book" };
+        window.ApplyChangeAsync(library.AddWorkAsync(work).GetAwaiter().GetResult()).GetAwaiter().GetResult();
+        window.ApplyChangeAsync(library.SaveCompletionAsync(new MediaExperience
+        {
+            WorkId = work.Id,
+            CompletedOn = new DateOnly(2026, 9, 30)
+        }, editing: false).GetAwaiter().GetResult()).GetAwaiter().GetResult();
+        window.ShowLibrary();
+        var view = window.LibraryView;
+        view.OpenMonth("2026-09");
+        Assert.Equal(work.Id, Assert.Single(view.ExpandedMonthWorks).Id);
+
+        window.ApplyChangeAsync(library.SaveCompletionAsync(new MediaExperience
+        {
+            WorkId = work.Id,
+            CompletedOn = new DateOnly(2026, 10, 1)
+        }, editing: false).GetAwaiter().GetResult()).GetAwaiter().GetResult();
+
+        Assert.DoesNotContain(view.LibraryMonths, month => month.Key == "2026-09");
+        var october = Assert.Single(view.LibraryMonths, month => month.Key == "2026-10");
+        Assert.Equal(work.Id, Assert.Single(october.Works).Id);
+        Assert.Single(view.LibraryMonths.SelectMany(month => month.Works), card => card.Id == work.Id);
+        Assert.Empty(view.ExpandedMonthWorks);
+        Assert.Null(view.Selection.ExpandedMonthKey);
+        Assert.Equal(Visibility.Visible, ((ScrollViewer)view.FindName("MonthOverview")).Visibility);
     }
 }
