@@ -304,10 +304,87 @@ public sealed class LibraryRepositoryTests
         Assert.Equal(new DateOnly(2026, 1, 2), showcase.CompletedWorks.Single(work => work.WorkId == alpha.Id).FirstCompletedOn);
         Assert.Equal(["Alpha", "Beta"], showcase.TopAuthors.Select(author => author.Author));
         Assert.Equal(3, showcase.TopAuthors.Single(author => author.Author == "Beta").RatingCount);
-        Assert.Equal(4.6, showcase.TopAuthors.Single(author => author.Author == "Alpha").WeightedRank);
-        Assert.Equal(4.3, showcase.TopAuthors.Single(author => author.Author == "Beta").WeightedRank);
+        Assert.Equal(5.0, showcase.TopAuthors.Single(author => author.Author == "Alpha").Score);
+        Assert.Equal(4.2, showcase.TopAuthors.Single(author => author.Author == "Beta").Score);
         Assert.Equal(3.9, showcase.CompletedWorks.Single(work => work.WorkId == alpha.Id).AggregateRank);
         Assert.Equal(3.3, showcase.CompletedWorks.Single(work => work.WorkId == beta.Id).AggregateRank);
+    }
+
+    [Fact]
+    public async Task AuthorRank_PreservesSingleBookDifferencesAndIsIndependentOfOtherAuthors()
+    {
+        await using var context = await TempDatabase.CreateAsync();
+        foreach (var (author, immersion) in new[] { ("Alpha", 5), ("Beta", 4), ("Gamma", 4) })
+        {
+            var work = new MediaWork { Title = author, Author = author, Kind = "book" };
+            await context.Repository.AddWorkAsync(work);
+            await context.Repository.AddExperienceAsync(new MediaExperience
+            {
+                WorkId = work.Id, CompletedOn = new DateOnly(2026, 10, 1),
+                Allure = 3, Immersion = immersion, Rationality = 4, Illumination = 4
+            });
+        }
+        var before = (await context.Repository.GetDashboardShowcaseAsync()).TopAuthors;
+        Assert.Equal(["Alpha", "Beta", "Gamma"], before.Select(author => author.Author));
+        Assert.Equal([4.5, 4.2, 4.2], before.Select(author => author.Score));
+
+        var unrelated = new MediaWork { Title = "Unrelated", Author = "Other", Kind = "book" };
+        await context.Repository.AddWorkAsync(unrelated);
+        await context.Repository.AddExperienceAsync(new MediaExperience
+        {
+            WorkId = unrelated.Id, CompletedOn = new DateOnly(2026, 10, 1),
+            Allure = 1, Immersion = 1, Rationality = 1, Illumination = 1
+        });
+        var after = (await context.Repository.GetDashboardShowcaseAsync()).TopAuthors;
+        Assert.Equal(before.Select(author => (author.Author, author.Score)), after.Select(author => (author.Author, author.Score)));
+    }
+
+    [Fact]
+    public async Task AuthorRank_AveragesEachBooksRatingsBeforeGivingBooksEqualWeight()
+    {
+        await using var context = await TempDatabase.CreateAsync();
+        var repeated = new MediaWork { Title = "Repeated book", Author = " Author ", Kind = "book" };
+        var single = new MediaWork { Title = "Single book", Author = "Author", Kind = "book" };
+        var unrated = new MediaWork { Title = "Unrated book", Author = "Author", Kind = "book" };
+        var screen = new MediaWork { Title = "Screen", Author = "Author", Kind = "screen" };
+        var anonymous = new MediaWork { Title = "Anonymous", Author = " ", Kind = "book" };
+        foreach (var work in new[] { repeated, single, unrated, screen, anonymous })
+            await context.Repository.AddWorkAsync(work);
+        foreach (var score in new[] { 5, 1, 1 })
+            await context.Repository.AddExperienceAsync(new MediaExperience
+            {
+                WorkId = repeated.Id, CompletedOn = new DateOnly(2026, 10, 1),
+                Allure = score == 5 ? 3 : 1, Immersion = score, Rationality = score, Illumination = score
+            });
+        await context.Repository.AddExperienceAsync(new MediaExperience
+        {
+            WorkId = single.Id, CompletedOn = new DateOnly(2026, 10, 1),
+            Allure = 3, Immersion = 4, Rationality = 4, Illumination = 4
+        });
+        await context.Repository.AddExperienceAsync(new MediaExperience
+        {
+            WorkId = repeated.Id, StartedOn = new DateOnly(2026, 9, 1),
+            Allure = 3, Immersion = 5, Rationality = 5, Illumination = 5
+        });
+        foreach (var work in new[] { repeated, unrated })
+            await context.Repository.AddExperienceAsync(new MediaExperience
+            {
+                WorkId = work.Id, CompletedOn = new DateOnly(2026, 10, 1), Allure = 3
+            });
+        foreach (var work in new[] { screen, anonymous })
+            await context.Repository.AddExperienceAsync(new MediaExperience
+            {
+                WorkId = work.Id, CompletedOn = new DateOnly(2026, 10, 1),
+                Allure = 3, Immersion = 5, Rationality = 5, Illumination = 5
+            });
+
+        var author = Assert.Single((await context.Repository.GetDashboardShowcaseAsync()).TopAuthors);
+        Assert.Equal("Author", author.Author);
+        Assert.Equal(2, author.WorkCount);
+        Assert.Equal(4, author.RatingCount);
+        // Book means: (3.9 + 0.9 + 0.9) / 3 = 1.9, and 3.3.
+        // Equal book weight: (1.9 + 3.3) / 2 / 3.9 * 5 = 3.333..., displayed as 3.3.
+        Assert.Equal(3.3, author.Score);
     }
 
     [Fact]
@@ -329,7 +406,7 @@ public sealed class LibraryRepositoryTests
 
         var showcase = await context.Repository.GetDashboardShowcaseAsync();
 
-        Assert.Equal(5.0, Assert.Single(showcase.TopAuthors).WeightedRank);
+        Assert.Equal(5.0, Assert.Single(showcase.TopAuthors).Score);
         Assert.Contains("满分 5.0", new AuthorCard(Assert.Single(showcase.TopAuthors)).EvidenceLabel);
         Assert.Equal(3.9, Assert.Single(showcase.CompletedWorks).AggregateRank);
         Assert.Equal(3.9, experience.Rank);

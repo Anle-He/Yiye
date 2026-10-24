@@ -88,27 +88,23 @@ public sealed class DashboardQueries(Database database) : SqliteStore(database)
 
         var authorsCommand = connection.CreateCommand();
         authorsCommand.CommandText = """
-            WITH rated AS (
+            WITH rated_works AS (
                 SELECT w.id AS work_id, TRIM(w.author) AS author,
-                       calculate_rank(e.allure, e.immersion, e.rationality, e.illumination) AS rank
+                       COUNT(*) AS rating_count,
+                       AVG(calculate_rank(e.allure, e.immersion, e.rationality, e.illumination)) AS work_rank
                 FROM experiences e
                 JOIN works w ON w.id = e.work_id
                 WHERE w.kind = 'book' AND e.completed_on IS NOT NULL
                   AND TRIM(COALESCE(w.author, '')) <> ''
                   AND e.allure IS NOT NULL AND e.immersion IS NOT NULL
                   AND e.rationality IS NOT NULL AND e.illumination IS NOT NULL
-            ), global_mean AS (
-                SELECT AVG(rank) AS mean_rank FROM rated
-            ), author_stats AS (
-                SELECT author, COUNT(DISTINCT work_id) AS work_count,
-                       COUNT(*) AS rating_count, AVG(rank) AS mean_rank
-                FROM rated
-                GROUP BY author
+                GROUP BY w.id, TRIM(w.author)
             )
-            SELECT author, work_count, rating_count,
-                   ((rating_count * author_stats.mean_rank) + (2.0 * global_mean.mean_rank)) / (rating_count + 2.0) AS weighted_rank
-            FROM author_stats CROSS JOIN global_mean
-            ORDER BY weighted_rank DESC, rating_count DESC, author
+            SELECT author, COUNT(*) AS work_count, SUM(rating_count) AS rating_count,
+                   AVG(work_rank) AS author_rank
+            FROM rated_works
+            GROUP BY author
+            ORDER BY author_rank DESC, rating_count DESC, author
             LIMIT 3;
             """;
         await using (var reader = await authorsCommand.ExecuteReaderAsync())
@@ -122,7 +118,7 @@ public sealed class DashboardQueries(Database database) : SqliteStore(database)
                     Author = reader.GetString(0),
                     WorkCount = reader.GetInt32(1),
                     RatingCount = reader.GetInt32(2),
-                    WeightedRank = Math.Round(reader.GetDouble(3) * DashboardAuthorRank.ScoreMaximum / RatingScale.RankMaximum,
+                    Score = Math.Round(reader.GetDouble(3) * DashboardAuthorRank.ScoreMaximum / RatingScale.RankMaximum,
                         1, MidpointRounding.AwayFromZero)
                 });
             }

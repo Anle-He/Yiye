@@ -270,7 +270,7 @@ public sealed class UiSmokeTests
             SettleAnimations();
             Assert.Contains("3.9", guide.Header.ToString());
             Assert.Contains("5.0", guide.Header.ToString());
-            Assert.Contains("先验权重", ((TextBlock)((Border)guide.Content).Child).Text);
+            Assert.Contains("各本书综合分的平均值 ÷ 3.9 × 5.0", ((TextBlock)((Border)guide.Content).Child).Text);
             Assert.Contains(Descendants(guide).OfType<TextBlock>(), text => text.Text.StartsWith("单次 Rank"));
             SaveSnapshot(window, "score-guide.png");
         }
@@ -437,7 +437,7 @@ public sealed class UiSmokeTests
                 Author = $"作者 {index}",
                 WorkCount = 2,
                 RatingCount = 3,
-                WeightedRank = 3.5
+                Score = 3.5
             }));
         }
         var panel = (StackPanel)Find(window, "DashboardShowcasePanel");

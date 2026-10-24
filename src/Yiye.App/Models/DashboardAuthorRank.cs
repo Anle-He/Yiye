@@ -8,6 +8,6 @@ public sealed class DashboardAuthorRank
     public string Author { get; init; } = string.Empty;
     public int WorkCount { get; init; }
     public int RatingCount { get; init; }
-    public double WeightedRank { get; init; }
+    public double Score { get; init; }
 
 }
