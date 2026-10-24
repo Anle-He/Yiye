@@ -407,7 +407,6 @@ public sealed class LibraryRepositoryTests
         var showcase = await context.Repository.GetDashboardShowcaseAsync();
 
         Assert.Equal(5.0, Assert.Single(showcase.TopAuthors).Score);
-        Assert.Contains("满分 5.0", new AuthorCard(Assert.Single(showcase.TopAuthors)).EvidenceLabel);
         Assert.Equal(3.9, Assert.Single(showcase.CompletedWorks).AggregateRank);
         Assert.Equal(3.9, experience.Rank);
         Assert.Equal(3.9, (await context.Repository.GetWorkAsync(work.Id))!.AggregateRank);

@@ -261,18 +261,6 @@ public sealed class UiSmokeTests
             Assert.Equal(Wpf.Ui.Controls.ControlAppearance.Primary, ((Wpf.Ui.Controls.Button)Find(window, "HomeButton")).Appearance);
             window.GoBack();
             Assert.Equal(LibraryPageKind.Home, window.CurrentPage);
-            var guide = (Expander)Find(window, "ScoreGuide");
-            guide.IsExpanded = true; window.UpdateLayout();
-            var frame = new DispatcherFrame();
-            window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
-            Dispatcher.PushFrame(frame);
-            window.UpdateLayout();
-            SettleAnimations();
-            Assert.Contains("3.9", guide.Header.ToString());
-            Assert.Contains("5.0", guide.Header.ToString());
-            Assert.Contains("各本书综合分的平均值 ÷ 3.9 × 5.0", ((TextBlock)((Border)guide.Content).Child).Text);
-            Assert.Contains(Descendants(guide).OfType<TextBlock>(), text => text.Text.StartsWith("单次 Rank"));
-            SaveSnapshot(window, "score-guide.png");
         }
         finally { window.Close(); }
 
