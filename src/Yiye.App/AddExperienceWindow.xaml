@@ -1,75 +1,105 @@
 <Window x:Class="Yiye.AddExperienceWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        Title="记录一次" Height="650" Width="920" MinWidth="580" MinHeight="540"
+        xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="完成记录" Height="650" Width="920" MinWidth="580" MinHeight="540"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Icon="Assets/app-icon.ico"
-        Background="{StaticResource PageBrush}" FontFamily="Segoe UI, Microsoft YaHei UI">
-    <Grid x:Name="DialogBody" Margin="24">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top">
-                <ui:SymbolIcon Symbol="CheckmarkCircle24" FontSize="20" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <StackPanel Grid.Column="1">
-                <TextBlock Text="ARCHIVE / 完成记录" Style="{StaticResource DialogEyebrowStyle}" />
-                <TextBlock x:Name="HeadingText" Text="记录一次" Style="{StaticResource DialogTitleStyle}" />
-                <TextBlock x:Name="IntroText" Text="只收录已经完成的阅读或观看。" Style="{StaticResource DialogDescriptionStyle}" />
-            </StackPanel>
-        </Grid>
-        <ScrollViewer x:Name="FormScroll" Grid.Row="1" Margin="0,16,0,0" VerticalScrollBarVisibility="Auto">
+        Background="{StaticResource PageBrush}" FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
+        FontSize="14" TextOptions.TextFormattingMode="Display">
+    <Grid x:Name="DialogBody" Margin="32">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock x:Name="HeadingText" Text="完成记录" Style="{StaticResource DialogTitleStyle}" />
+            <TextBlock x:Name="IntroText" Text="记下完成日期，评分和感想可以稍后补充。" Style="{StaticResource DialogDescriptionStyle}" />
+        </StackPanel>
+        <ScrollViewer x:Name="FormScroll" Grid.Row="1" Margin="0,28,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <Grid x:Name="CompletionPanel" Margin="0,0,8,0" SizeChanged="Form_SizeChanged">
-<Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
-<Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <Border x:Name="ExperienceDateSection" Style="{StaticResource FormSectionStyle}">
-                  <StackPanel>
-                    <TextBlock Text="完成时间" FontSize="16" FontWeight="SemiBold"/>
-                    <TextBlock Text="完成日期会进入首页时间线与作品档案。" Style="{StaticResource FieldHintStyle}" Margin="0,5,0,16"/>
-                    <StackPanel x:Name="EndDateField"><TextBlock x:Name="EndDateLabel" Text="完成日期" Style="{StaticResource FieldLabelStyle}"/><DatePicker x:Name="CompletedOnPicker" Height="42" /></StackPanel>
-                    <TextBlock x:Name="DateError" Text="请选择完成日期" Foreground="#A33A32" Margin="2,7,0,0" Visibility="Collapsed" />
-                  </StackPanel>
-                </Border>
-                <Border x:Name="HistoricalProgressPanel" Grid.Row="2" Style="{StaticResource FormSectionStyle}" Margin="0,14,0,0" Visibility="Collapsed">
-                    <StackPanel><TextBlock Text="历史进度" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock x:Name="HistoricalProgressText" TextWrapping="Wrap" Margin="0,8,0,0" />
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="32"/>
+                    <ColumnDefinition Width="1.1*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Border x:Name="ExperienceDateSection">
+                    <StackPanel>
+                        <StackPanel x:Name="EndDateField">
+                            <TextBlock x:Name="EndDateLabel" Text="完成日期" Style="{StaticResource FieldLabelStyle}"/>
+                            <DatePicker x:Name="CompletedOnPicker" Height="40" AutomationProperties.Name="完成日期" AutomationProperties.IsRequiredForForm="True" />
+                        </StackPanel>
+                        <TextBlock x:Name="DateError" Text="请选择完成日期" Foreground="#A33A32" Margin="2,7,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                 </Border>
-
-                    <Border x:Name="RatingSection" Grid.Column="2" Grid.RowSpan="3" Style="{StaticResource FormSectionStyle}">
-                      <StackPanel>
-                        <Grid Margin="0,0,0,15">
-                            <StackPanel>
-                                <TextBlock Text="四维评分" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="四项完整后，才会计入作品综合分。" Style="{StaticResource FieldHintStyle}" Margin="0,4,0,0" />
-                            </StackPanel>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Padding="12,6" CornerRadius="12" Background="{StaticResource WarmSoftBrush}">
-                                <TextBlock x:Name="RankPreview" Text="未评分" FontWeight="SemiBold" Foreground="{StaticResource ScoreBrush}" />
-                            </Border>
-                        </Grid>
+                <Border x:Name="HistoricalProgressPanel" Grid.Row="2" Margin="0,24,0,0" Padding="0,18,0,0"
+                        BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="已有进度" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock x:Name="HistoricalProgressText" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{StaticResource MutedStrongBrush}" />
+                    </StackPanel>
+                </Border>
+                <Border x:Name="RatingSection" Grid.Column="2" Grid.RowSpan="3" Padding="22"
+                        Background="{StaticResource SurfaceBrush}" CornerRadius="8" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+                    <StackPanel>
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                            <Border Padding="13,11" CornerRadius="11" Background="{StaticResource SurfaceSecondaryBrush}"><StackPanel><TextBlock Text="Allure · 吸引力（3级）" Style="{StaticResource FieldLabelStyle}"/><ComboBox x:Name="AllureBox" Height="38" SelectionChanged="Rating_SelectionChanged"/></StackPanel></Border>
-                            <Border Grid.Column="2" Padding="13,11" CornerRadius="11" Background="{StaticResource SurfaceSecondaryBrush}"><StackPanel><TextBlock Text="Immersion · 沉浸感" Style="{StaticResource FieldLabelStyle}"/><ComboBox x:Name="ImmersionBox" Height="38" SelectionChanged="Rating_SelectionChanged"/></StackPanel></Border>
-                            <Border Grid.Row="1" Margin="0,12,0,0" Padding="13,11" CornerRadius="11" Background="{StaticResource SurfaceSecondaryBrush}"><StackPanel><TextBlock Text="Rationality · 合理性" Style="{StaticResource FieldLabelStyle}"/><ComboBox x:Name="RationalityBox" Height="38" SelectionChanged="Rating_SelectionChanged"/></StackPanel></Border>
-                            <Border Grid.Row="1" Grid.Column="2" Margin="0,12,0,0" Padding="13,11" CornerRadius="11" Background="{StaticResource SurfaceSecondaryBrush}"><StackPanel><TextBlock Text="Illumination · 启发性" Style="{StaticResource FieldLabelStyle}"/><ComboBox x:Name="IlluminationBox" Height="38" SelectionChanged="Rating_SelectionChanged"/></StackPanel></Border>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="本次评分" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock x:Name="RankPreview" Grid.Column="1" Margin="12,0,0,0" Text="未评分" FontSize="16"
+                                       FontWeight="SemiBold" Foreground="{StaticResource ScoreBrush}" AutomationProperties.LiveSetting="Polite" />
                         </Grid>
-                      </StackPanel>
-                    </Border>
-                    <Border x:Name="NotesSection" Grid.Row="1" Style="{StaticResource FormSectionStyle}" Margin="0,14,0,0">
-                      <StackPanel><TextBlock Text="这一次的总结" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock Text="留下一段只属于这次体验的收束。" Style="{StaticResource FieldHintStyle}" Margin="0,5,0,12" />
-                        <ui:TextBox x:Name="NotesBox" Height="86" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="1000" PlaceholderText="印象最深的部分，或完成之后的感受" />
-                      </StackPanel>
-                    </Border>
+                        <TextBlock Text="四项填全后计入综合分，可留空。" Style="{StaticResource FieldHintStyle}" Margin="0,7,0,22" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="吸引力" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBlock Text="1—3 分" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8"/>
+                                <ComboBox x:Name="AllureBox" Height="40" SelectionChanged="Rating_SelectionChanged" AutomationProperties.Name="吸引力，1 至 3 分"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="沉浸感" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBlock Text="1—5 分" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8"/>
+                                <ComboBox x:Name="ImmersionBox" Height="40" SelectionChanged="Rating_SelectionChanged" AutomationProperties.Name="沉浸感，1 至 5 分"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Margin="0,22,0,0">
+                                <TextBlock Text="合理性" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBlock Text="1—5 分" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8"/>
+                                <ComboBox x:Name="RationalityBox" Height="40" SelectionChanged="Rating_SelectionChanged" AutomationProperties.Name="合理性，1 至 5 分"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,22,0,0">
+                                <TextBlock Text="启发性" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBlock Text="1—5 分" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8"/>
+                                <ComboBox x:Name="IlluminationBox" Height="40" SelectionChanged="Rating_SelectionChanged" AutomationProperties.Name="启发性，1 至 5 分"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <Border x:Name="NotesSection" Grid.Row="1" Margin="0,24,0,0">
+                    <StackPanel>
+                        <TextBlock Text="感想" Style="{StaticResource FieldLabelStyle}" />
+                        <TextBox x:Name="NotesBox" Height="180" FontSize="16" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="1000"
+                                 VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
+                                 md:HintAssist.Hint="记下这次阅读或观看的感受（选填）" AutomationProperties.Name="本次感想" />
+                    </StackPanel>
+                </Border>
             </Grid>
         </ScrollViewer>
-        <Border Grid.Row="2" Style="{StaticResource DialogActionBarStyle}"><Grid>
-            <ui:Button x:Name="DeleteButton" Content="删除记录" Icon="{ui:SymbolIcon Delete24}" Appearance="Secondary"
-                       Foreground="#A33A32" HorizontalAlignment="Left" Visibility="Collapsed" Click="Delete_Click" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><ui:Button Content="取消" Appearance="Secondary" Margin="0,0,10,0" Click="Cancel_Click" />
-            <ui:Button x:Name="SaveButton" Content="保存记录" Icon="{ui:SymbolIcon Save24}" Appearance="Primary" Click="Save_Click" IsDefault="True" /></StackPanel>
-        </Grid></Border>
+        <Border Grid.Row="2" Margin="0,24,0,0" Padding="0,20,0,0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
+            <Grid>
+                <Button x:Name="DeleteButton" Content="删除记录" Style="{StaticResource TextButton}" Foreground="#A33A32"
+                           HorizontalAlignment="Left" Visibility="Collapsed" Click="Delete_Click" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="取消" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" MinWidth="76" Click="Cancel_Click" IsCancel="True" />
+                    <Button x:Name="SaveButton" Content="保存记录" Style="{StaticResource PrimaryButton}" MinWidth="96" Click="Save_Click" IsDefault="True" />
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

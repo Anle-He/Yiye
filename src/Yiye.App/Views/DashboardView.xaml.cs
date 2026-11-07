@@ -20,16 +20,15 @@ public partial class DashboardView : UserControl
     public DashboardView() { InitializeComponent(); DataContext = this; }
     public void Render(IReadOnlyList<MediaWork> works, DashboardSnapshot snapshot)
     {
-        var recentSelection = (RecentWorkPicker.SelectedItem as ShowcaseCard)?.WorkId;
         DashboardTimelineDays.Clear();
-        foreach (var day in snapshot.Timeline.GroupBy(item => item.LoggedOn))
+        foreach (var day in snapshot.Timeline.Take(3).GroupBy(item => item.LoggedOn))
             DashboardTimelineDays.Add(new DashboardTimelineDay { Date = day.Key, Items = day.Select(item => new TimelineCard(item)).ToArray() });
         DashboardHero.Visibility = works.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         DashboardCollectionHeader.Visibility = works.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DashboardWorkCountText.Text = works.Count.ToString();
         DashboardActiveCountText.Text = works.Sum(work => work.RatedExperienceCount).ToString();
         DashboardExperienceCountText.Text = works.Sum(work => work.ExperienceCount).ToString();
-        DashboardEmptyState.Visibility = works.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DashboardStats.Visibility = works.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         DashboardTimelineList.Visibility = snapshot.Timeline.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         DashboardTimelineEmptyState.Visibility = works.Count > 0 && snapshot.Timeline.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         static IEnumerable<DashboardShowcaseItem> Ranked(IEnumerable<DashboardShowcaseItem> items) => items.Where(item => item.AggregateRank is not null)
@@ -39,11 +38,9 @@ public partial class DashboardView : UserControl
         DashboardTopScreens.Clear();
         foreach (var item in Ranked(snapshot.Showcase.CompletedWorks.Where(item => item.Kind == "screen"))) DashboardTopScreens.Add(new(item));
         DashboardRecentWorks.Clear();
-        foreach (var item in snapshot.Showcase.CompletedWorks.OrderByDescending(item => item.LatestCompletedOn).Take(3)) DashboardRecentWorks.Add(new(item));
+        foreach (var item in snapshot.Showcase.CompletedWorks.OrderByDescending(item => item.LatestCompletedOn).Take(6)) DashboardRecentWorks.Add(new(item));
         DashboardTopAuthors.Clear();
         foreach (var item in snapshot.Showcase.TopAuthors) DashboardTopAuthors.Add(new(item));
-        RecentWorkPicker.SelectedIndex = DashboardRecentWorks.ToList().FindIndex(card => card.WorkId == recentSelection);
-        if (RecentWorkPicker.SelectedIndex < 0 && DashboardRecentWorks.Count > 0) RecentWorkPicker.SelectedIndex = 0;
         DashboardShowcasePanel.Visibility = works.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
     private void AddWork_Click(object sender, RoutedEventArgs e) => AddRequested?.Invoke();
@@ -51,47 +48,51 @@ public partial class DashboardView : UserControl
     public void RestorePosition(string workId)
     {
         DashboardScroll.ScrollToVerticalOffset(_returnOffset);
-        if (_returnAction is { IsVisible: true }) _returnAction.Focus();
+        if (_returnAction is { IsVisible: true } && MatchesWork(_returnAction.Tag, workId)) _returnAction.Focus();
         else FindReturnAction(this, workId)?.Focus();
     }
     private static Button? FindReturnAction(DependencyObject root, string workId)
     {
-        if (root is Button button && button.Tag switch
-        {
-            TimelineCard card => card.WorkId == workId,
-            ShowcaseCard card => card.WorkId == workId,
-            _ => false
-        }) return button;
+        if (root is Button button && MatchesWork(button.Tag, workId)) return button;
         for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); index++)
             if (FindReturnAction(System.Windows.Media.VisualTreeHelper.GetChild(root, index), workId) is { } found) return found;
         return null;
     }
+    private static bool MatchesWork(object? value, string workId) => value switch
+        {
+            TimelineCard card => card.WorkId == workId,
+            ShowcaseCard card => card.WorkId == workId,
+            _ => false
+        };
     private void DashboardWork_Open(object sender, RoutedEventArgs e)
     {
         _returnAction = sender as Button;
         var id = (sender as FrameworkElement)?.Tag switch { TimelineCard item => item.WorkId, ShowcaseCard item => item.WorkId, _ => null };
         if (id is not null) WorkRequested?.Invoke(id);
     }
+    private void Dashboard_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Height < 600;
+        Tag = compact ? "Compact" : "Regular";
+        DashboardContent.Margin = compact ? new Thickness(24, 6, 24, 8) : new Thickness(24, 8, 24, 16);
+        DashboardCollectionHeader.Margin = new Thickness(0, 0, 0, compact ? 8 : 12);
+        DashboardRecentSection.Padding = compact ? new Thickness(12, 10, 2, 2) : new Thickness(16, 14, 6, 8);
+        DashboardSideColumn.Padding = new Thickness(compact ? 12 : 16);
+        DashboardJournalSection.Padding = compact ? new Thickness(12, 10, 12, 10) : new Thickness(16);
+        DashboardColumns.Margin = new Thickness(0, compact ? 8 : 12, 0, 0);
+        BookHeadingPanel.Margin = ScreenHeadingPanel.Margin = new Thickness(0, 0, 0, compact ? 4 : 8);
+        DashboardScreenRanking.Margin = new Thickness(0, compact ? 8 : 12, 0, 0);
+        DashboardAuthorRanking.Margin = new Thickness(0, compact ? 6 : 12, 0, 0);
+        DashboardAuthorRanking.Padding = new Thickness(0, compact ? 6 : 10, 0, 0);
+    }
     private void DashboardColumns_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var wide = e.NewSize.Width >= 950;
-        Grid.SetColumnSpan(DashboardMainColumn, wide ? 1 : 3);
+        var wide = e.NewSize.Width >= 720;
+        DashboardColumns.ColumnDefinitions[2].Width = new GridLength(e.NewSize.Width < 900 ? 250 : 280);
+        Grid.SetColumnSpan(DashboardSideColumn, wide ? 1 : 3);
         Grid.SetColumn(DashboardJournalSection, wide ? 2 : 0);
-        Grid.SetRow(DashboardJournalSection, wide ? 0 : 2);
+        Grid.SetRow(DashboardJournalSection, wide ? 0 : 1);
         Grid.SetColumnSpan(DashboardJournalSection, wide ? 1 : 3);
-        DashboardJournalSection.Margin = wide ? new Thickness(0, 4, 0, 0) : new Thickness(0, 14, 0, 0);
-        var stacked = e.NewSize.Width < 700;
-        Border[] rankings = [DashboardBookRanking, DashboardScreenRanking, DashboardAuthorRanking];
-        for (var index = 0; index < rankings.Length; index++)
-        {
-            Grid.SetRow(rankings[index], stacked ? index : 0);
-            Grid.SetColumn(rankings[index], stacked ? 0 : index);
-            Grid.SetColumnSpan(rankings[index], stacked ? 3 : 1);
-            rankings[index].Margin = index == 0 ? new Thickness(0)
-                : stacked ? new Thickness(0, 16, 0, 0) : new Thickness(24, 0, 0, 0);
-            rankings[index].BorderBrush = (System.Windows.Media.Brush)FindResource("DividerBrush");
-            rankings[index].BorderThickness = !stacked && index > 0 ? new Thickness(1, 0, 0, 0) : new Thickness(0);
-        }
+        DashboardJournalSection.Margin = wide ? new Thickness(0) : new Thickness(0, 28, 0, 0);
     }
-
 }

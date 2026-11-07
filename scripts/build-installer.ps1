@@ -107,7 +107,8 @@ $requiredPublishFiles = @(
     "Yiye.App.deps.json",
     "Yiye.App.runtimeconfig.json",
     "Microsoft.Data.Sqlite.dll",
-    "Wpf.Ui.dll"
+    "MaterialDesignThemes.Wpf.dll",
+    "MaterialDesignColors.dll"
 )
 $missingPublishFiles = $requiredPublishFiles | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $publishDirectory $_) -PathType Leaf)

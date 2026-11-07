@@ -14,9 +14,9 @@ public partial class AddWorkWindow : Window
         InitializeComponent();
         if (existingWork is not null)
         {
-            Title = "编辑作品信息";
-            HeadingText.Text = "编辑作品信息";
-            DescriptionText.Text = "修改作品的标题、副标题和作者。";
+            Title = "编辑作品";
+            HeadingText.Text = "编辑作品";
+            DescriptionText.Text = "更新作品资料。";
             AddButton.Content = "保存";
             TitleBox.Text = existingWork.Title;
             SubtitleBox.Text = existingWork.Subtitle ?? string.Empty;

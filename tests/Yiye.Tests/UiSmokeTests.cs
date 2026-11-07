@@ -4,6 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using System.Windows.Media;
@@ -26,12 +27,17 @@ public sealed class UiSmokeTests
             {
                 var application = new Yiye.App(launchWindow: false);
                 application.InitializeComponent();
-                var mainWindow = new MainWindow();
+                var mainWindow = new MainWindow(new LibraryApplication(context.Database));
+                var layoutCover = Path.Combine(context.Root, "layout-cover.png");
+                var layoutEncoder = new PngBitmapEncoder();
+                layoutEncoder.Frames.Add(BitmapFrame.Create(BitmapSource.Create(2, 3, 96, 96,
+                    PixelFormats.Bgr24, null, Enumerable.Repeat((byte)120, 18).ToArray(), 6)));
+                using (var output = File.Create(layoutCover)) layoutEncoder.Save(output);
                 AssertExperienceRatingTemplate(mainWindow);
                 AssertTimelineTemplate(mainWindow);
-                AssertDashboardLayout(mainWindow);
-                AssertDetailLayout();
-                AssertLibraryLayout();
+                AssertDashboardLayout(mainWindow, layoutCover);
+                AssertDetailLayout(context, layoutCover);
+                AssertLibraryLayout(context, layoutCover);
                 AssertMonthFiltering();
                 var addWork = new AddWorkWindow();
                 var addExperience = new AddExperienceWindow("ui-test", "book");
@@ -104,7 +110,7 @@ public sealed class UiSmokeTests
     private static void AssertRatingSelectionIsSaved(AddExperienceWindow window, bool editing)
     {
         Exception? failure = null;
-        window.Dispatcher.BeginInvoke(new Action(() =>
+        window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
             try
             {
@@ -113,7 +119,11 @@ public sealed class UiSmokeTests
                     var box = Assert.IsType<ComboBox>(Find(window, name));
                     box.BringIntoView();
                     window.UpdateLayout();
-                    box.Focus();
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.True(box.IsLoaded);
+                    Assert.True(box.Focus(), $"{name} must accept keyboard focus before input.");
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.True(box.IsKeyboardFocusWithin);
                     var expected = editing && name == "IlluminationBox" ? 4 : 0;
                     Assert.Equal(expected, box.SelectedIndex);
                     PressKey(box, Key.F4);
@@ -153,6 +163,15 @@ public sealed class UiSmokeTests
         { RoutedEvent = Keyboard.KeyDownEvent };
         box.RaiseEvent(input);
         box.UpdateLayout();
+        // ComboBox queues popup focus and selection work; finish it before the next key.
+        DrainDispatcher(box.Dispatcher);
+    }
+
+    private static void DrainDispatcher(Dispatcher dispatcher)
+    {
+        var frame = new DispatcherFrame();
+        dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     private static void AssertExplicitWorkSelection(TempDatabase context)
@@ -215,7 +234,17 @@ public sealed class UiSmokeTests
             window.InitializeLibraryAsync().GetAwaiter().GetResult();
             window.Show();
             window.Width = 1280; window.Height = 800;
-            window.ShowLibrary();
+            window.ShowHome();
+            var search = (TextBox)Find(window, "GlobalSearchBox");
+            search.Text = "navigation";
+            search.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(search),
+                Environment.TickCount, Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
+            window.UpdateLayout();
+            Assert.Equal(LibraryPageKind.Library, window.CurrentPage);
+            Assert.Equal("navigation", window.LibraryView.Selection.Query);
+            Assert.Equal("all", window.LibraryView.Selection.Kind);
+            Assert.Equal(works.Select(work => work.Id).Order(), window.LibraryView.VisibleWorks.Select(work => work.Id).Order());
+            Assert.True(search.IsKeyboardFocused);
             window.LibraryView.SetFilter("book", "navigation");
             window.LibraryView.OpenMonth("2026-09");
             window.UpdateLayout();
@@ -224,8 +253,9 @@ public sealed class UiSmokeTests
             if (SystemParameters.ClientAreaAnimation) Assert.Single(transitionLayer.Children.Cast<UIElement>());
             SettleAnimations();
             Assert.Empty(transitionLayer.Children.Cast<UIElement>());
-            Assert.Equal(0, ((ScrollViewer)Find(window, "DetailScroll")).ScrollableHeight);
-            Assert.Equal(Wpf.Ui.Controls.ControlAppearance.Primary, ((Wpf.Ui.Controls.Button)Find(window, "LibraryButton")).Appearance);
+            AssertScrollAccess((ScrollViewer)Find(window, "DetailScroll"));
+            Assert.NotNull(window.DetailView.CoverImageSource);
+            Assert.True(System.Windows.Controls.Primitives.Selector.GetIsSelected((Button)Find(window, "LibraryButton")));
             Assert.Contains("2026", ((Button)Find(window, "BackButton")).Content.ToString());
             window.GoBack();
             Assert.Equal(LibraryPageKind.Library, window.CurrentPage);
@@ -236,29 +266,36 @@ public sealed class UiSmokeTests
             Assert.Null(list.SelectedItem);
             window.UpdateLayout();
             var scroll = Descendants(list).OfType<ScrollViewer>().Single();
-            scroll.ScrollToEnd(); window.UpdateLayout();
-            var offset = scroll.VerticalOffset;
-            Assert.True(offset > 0);
-            window.OpenWorkAsync(works[^1].Id).GetAwaiter().GetResult();
+            Assert.InRange(scroll.ScrollableHeight, 0, 1);
+            Assert.True(window.LibraryView.PageCount > 1);
+            window.LibraryView.SetPage(window.LibraryView.PageCount - 1);
+            window.UpdateLayout();
+            var pageIndex = window.LibraryView.PageIndex;
+            var pageWork = window.LibraryView.PageWorks[^1];
+            window.OpenWorkAsync(pageWork.Id).GetAwaiter().GetResult();
             window.GoBack(); window.UpdateLayout();
-            Assert.Equal(offset, scroll.VerticalOffset, 1);
+            DrainDispatcher(window.Dispatcher);
+            Assert.Equal(pageIndex, window.LibraryView.PageIndex);
+            Assert.True(Descendants(list).OfType<ListBoxItem>().Any(item =>
+                item.DataContext is WorkCard card && card.Id == pageWork.Id && item.IsKeyboardFocusWithin),
+                "Returning from a work should restore focus to that work in its library group.");
 
             window.OpenWorkAsync(works[0].Id).GetAwaiter().GetResult();
             window.Width = 980; window.Height = 640; window.UpdateLayout();
-            Assert.True(window.DetailView.IsCompact);
-            Assert.Equal(1, Grid.GetRow((FrameworkElement)Find(window, "HeroActions")));
-            Assert.True(((Button)Find(window, "DetailCoverButton")).ActualHeight <= 150);
+            AssertDetailActions(window);
             SettleAnimations();
+            var compactDetailScroll = (ScrollViewer)Find(window, "DetailScroll");
+            Assert.InRange(compactDetailScroll.ScrollableHeight, 0, 1);
+            AssertWithin((FrameworkElement)Find(window, "SummarySurface"), compactDetailScroll);
             SaveSnapshot(window, "navigation-detail-compact.png");
             window.Width = 1400; window.Height = 900; window.UpdateLayout();
-            Assert.False(window.DetailView.IsCompact);
-            Assert.Equal(0, Grid.GetRow((FrameworkElement)Find(window, "HeroActions")));
+            AssertDetailActions(window);
             SettleAnimations();
             SaveSnapshot(window, "navigation-detail-wide.png");
             window.ShowHome();
             window.OpenWorkAsync(works[1].Id).GetAwaiter().GetResult();
             Assert.Equal("返回首页", ((Button)Find(window, "BackButton")).Content);
-            Assert.Equal(Wpf.Ui.Controls.ControlAppearance.Primary, ((Wpf.Ui.Controls.Button)Find(window, "HomeButton")).Appearance);
+            Assert.True(System.Windows.Controls.Primitives.Selector.GetIsSelected((Button)Find(window, "HomeButton")));
             window.GoBack();
             Assert.Equal(LibraryPageKind.Home, window.CurrentPage);
         }
@@ -346,6 +383,7 @@ public sealed class UiSmokeTests
             Assert.True(window.IsEnabled);
             Assert.Single(window.Covers);
             Assert.Single(context.Repository.Covers.GetCoversAsync(work.Id).GetAwaiter().GetResult());
+            AssertCoverPreviewKeyboardNavigation(window);
             window.Close();
             Assert.False(window.IsVisible);
         }
@@ -355,6 +393,38 @@ public sealed class UiSmokeTests
             window.Close();
             SynchronizationContext.SetSynchronizationContext(previousContext);
         }
+    }
+
+    private static void AssertCoverPreviewKeyboardNavigation(ManageCoversWindow window)
+    {
+        window.UpdateLayout();
+        var previewButton = Assert.Single(Descendants(window).OfType<Button>(),
+            button => System.Windows.Automation.AutomationProperties.GetName(button) == "查看封面大图");
+        var overlay = Assert.IsType<Grid>(Find(window, "PreviewOverlay"));
+        var gallery = Assert.IsType<Grid>(Find(window, "GalleryBody"));
+        var closeButton = Assert.IsAssignableFrom<Button>(Find(window, "ClosePreviewButton"));
+        var image = Assert.IsType<Image>(Find(window, "PreviewImage"));
+        Assert.True(previewButton.Focus());
+        Assert.Same(previewButton, Keyboard.FocusedElement);
+        SaveSnapshot(window, "cover-gallery-populated.png");
+
+        previewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        window.UpdateLayout();
+        Assert.Equal(Visibility.Visible, overlay.Visibility);
+        Assert.False(gallery.IsEnabled);
+        Assert.NotNull(image.Source);
+        Assert.Same(closeButton, Keyboard.FocusedElement);
+        SaveSnapshot(window, "cover-preview.png");
+
+        var escape = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(closeButton), Environment.TickCount, Key.Escape)
+        { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        closeButton.RaiseEvent(escape);
+        window.UpdateLayout();
+        Assert.True(escape.Handled);
+        Assert.Equal(Visibility.Collapsed, overlay.Visibility);
+        Assert.True(gallery.IsEnabled);
+        Assert.Null(image.Source);
+        Assert.Same(previewButton, Keyboard.FocusedElement);
     }
 
     private static void AssertCoverLoadFailure(TempDatabase context, Application application)
@@ -395,267 +465,397 @@ public sealed class UiSmokeTests
         }
     }
 
-    private static void AssertDashboardLayout(MainWindow window)
+    private static void AssertDashboardLayout(MainWindow window, string coverPath)
     {
-        for (var index = 1; index <= 3; index++)
+        var samples = Enumerable.Range(1, 6).Select(index => new DashboardShowcaseItem
         {
-            var work = new DashboardShowcaseItem
+            WorkId = index.ToString(),
+            Title = index == 6 ? "一部标题很长的作品，封面与标题仍应可以辨认和打开" : $"收藏作品 {index}",
+            Kind = index <= 3 ? "book" : "screen",
+            Author = "示例作者",
+            PrimaryCoverPath = coverPath,
+            AggregateRank = 3.5,
+            RatingCount = 2,
+            CompletionCount = 2,
+            FirstCompletedOn = new DateOnly(2026, 1, index),
+            LatestCompletedOn = new DateOnly(2026, 8, index)
+        }).ToArray();
+        void Populate(Yiye.Views.DashboardView target)
+        {
+            foreach (var work in samples)
             {
-                WorkId = index.ToString(),
-                Title = $"收藏作品 {index}",
-                Author = "示例作者",
-                AggregateRank = 3.5,
-                RatingCount = 2,
-                CompletionCount = 2,
-                FirstCompletedOn = new DateOnly(2026, 1, index),
-                LatestCompletedOn = new DateOnly(2026, 8, index)
-            };
-            window.HomeView.DashboardTopBooks.Add(new ShowcaseCard(work));
-            if (index == 1) window.HomeView.DashboardTopScreens.Add(new ShowcaseCard(work));
-            window.HomeView.DashboardRecentWorks.Add(new ShowcaseCard(work));
-            window.HomeView.DashboardTimelineDays.Add(new DashboardTimelineDay
-            {
-                Date = work.LatestCompletedOn,
-                Items = [new TimelineCard(new DashboardTimelineItem { Id = $"event-{index}", WorkId = work.WorkId,
-                    Title = work.Title, Kind = "book" })]
-            });
-            window.HomeView.DashboardTopAuthors.Add(new AuthorCard(new DashboardAuthorRank
-            {
-                Position = index,
-                Author = $"作者 {index}",
-                WorkCount = 2,
-                RatingCount = 3,
-                Score = 3.5
-            }));
+                (work.Kind == "book" ? target.DashboardTopBooks : target.DashboardTopScreens).Add(new ShowcaseCard(work));
+                target.DashboardRecentWorks.Add(new ShowcaseCard(work));
+                if (target.DashboardTimelineDays.Count < 3) target.DashboardTimelineDays.Add(new DashboardTimelineDay
+                {
+                    Date = work.LatestCompletedOn,
+                    Items = [new TimelineCard(new DashboardTimelineItem
+                    {
+                        Id = $"event-{work.WorkId}", WorkId = work.WorkId, Title = work.Title, Kind = work.Kind
+                    })]
+                });
+            }
+            for (var index = 1; index <= 3; index++)
+                target.DashboardTopAuthors.Add(new AuthorCard(new DashboardAuthorRank
+                { Position = index, Author = $"作者 {index}", WorkCount = 2, RatingCount = 3, Score = 3.5 }));
         }
-        var panel = (StackPanel)Find(window, "DashboardShowcasePanel");
+
+        // The isolated view verifies requests without routing synthetic IDs to a database.
+        var view = new Yiye.Views.DashboardView();
+        Populate(view);
+        var requestedWorks = new List<string>();
+        view.WorkRequested += requestedWorks.Add;
+        var panel = (FrameworkElement)view.FindName("DashboardShowcasePanel");
         foreach (var width in new[] { 1100d, 850d, 600d })
         {
-            panel.Measure(new Size(width, double.PositiveInfinity));
-            panel.Arrange(new Rect(0, 0, width, panel.DesiredSize.Height));
-            panel.UpdateLayout();
-            panel.Measure(new Size(width, double.PositiveInfinity));
-            panel.Arrange(new Rect(0, 0, width, panel.DesiredSize.Height));
-            panel.UpdateLayout();
-            foreach (var wrap in Descendants(panel).OfType<WrapPanel>())
+            for (var pass = 0; pass < 2; pass++)
             {
-                foreach (FrameworkElement child in wrap.Children)
-                {
-                    var origin = child.TranslatePoint(new Point(), wrap);
-                    Assert.True(origin.X + child.ActualWidth <= wrap.ActualWidth + 0.5);
-                }
+                panel.Measure(new Size(width, double.PositiveInfinity));
+                panel.Arrange(new Rect(0, 0, width, panel.DesiredSize.Height));
+                panel.UpdateLayout();
             }
-            if (width >= 700) Assert.Equal(((Border)Find(window, "DashboardScreenRanking")).ActualHeight,
-                        ((Border)Find(window, "DashboardBookRanking")).ActualHeight);
-            var sideColumn = (Grid)Find(window, "DashboardSideColumn");
-            Assert.Equal(1, Grid.GetRow(sideColumn));
-            Assert.Equal(width < 700 ? 1 : 0, Grid.GetRow((Border)Find(window, "DashboardScreenRanking")));
-            foreach (var (name, count) in new[] { ("DashboardBookRanking", 3), ("DashboardScreenRanking", 1) })
+            var recent = (ItemsControl)view.FindName("RecentWorkPicker");
+            Assert.Equal(samples.Length, recent.Items.Count);
+            var recentButtons = Descendants(recent).OfType<Button>().Where(button => button.Tag is ShowcaseCard).ToArray();
+            Assert.Equal(samples.Select(item => item.WorkId), recentButtons.Select(button => ((ShowcaseCard)button.Tag).WorkId));
+            AssertNoOverlap(recentButtons, recent);
+            foreach (var button in recentButtons)
             {
-                var ranking = (Border)Find(window, name);
-                var list = Assert.Single(Descendants(ranking).OfType<ItemsControl>());
-                var buttons = Descendants(list).OfType<Button>().ToArray();
-                Assert.Equal(count, buttons.Length);
-                Assert.All(buttons, button =>
-                    Assert.True(button.ActualWidth >= list.ActualWidth - 1, "Rank rows should fill the list width."));
+                AssertWithin(button, recent);
+                Assert.Contains(Descendants(button).OfType<Image>(), image =>
+                    image.Source is not null && image.ActualWidth > 0 && image.ActualHeight > 0);
             }
-            var journal = (Border)Find(window, "DashboardJournalSection");
-            var rankingsBottom = sideColumn.TranslatePoint(new Point(0, sideColumn.ActualHeight), panel).Y;
-            if (width < 950) Assert.True(journal.TranslatePoint(new Point(), panel).Y >= rankingsBottom);
-            else Assert.Equal(2, Grid.GetColumn(journal));
-            Assert.Equal(3, sideColumn.Children.Count);
-            var picker = (ListBox)Find(window, "RecentWorkPicker");
-            picker.SelectedIndex = 1;
-            panel.UpdateLayout();
-            Assert.Same(window.HomeView.DashboardRecentWorks[1], picker.SelectedItem);
-            Assert.Contains(Descendants(panel).OfType<ContentControl>(), control => ReferenceEquals(control.Content, picker.SelectedItem));
+            foreach (var name in new[] { "DashboardBookRanking", "DashboardScreenRanking" })
+            {
+                var ranking = (FrameworkElement)view.FindName(name);
+                var buttons = Descendants(ranking).OfType<Button>().Where(button => button.Tag is ShowcaseCard).ToArray();
+                Assert.Equal(3, buttons.Length);
+                AssertNoOverlap(buttons, ranking);
+                Assert.All(buttons, button => AssertWithin(button, ranking));
+            }
+            var sections = new[] { "DashboardRecentSection", "DashboardSideColumn", "DashboardJournalSection" }
+                .Select(name => (FrameworkElement)view.FindName(name)).ToArray();
+            Assert.All(sections, section => AssertWithin(section, panel));
+            AssertNoOverlap(sections, panel);
+            Assert.Equal(3, ((ItemsControl)view.FindName("DashboardTimelineList")).Items.Count);
+            foreach (var button in Descendants(panel).OfType<Button>().Where(button => button.Tag is ShowcaseCard or TimelineCard))
+            {
+                Assert.True(button.IsEnabled && button.Focusable);
+                requestedWorks.Clear();
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var workId = button.Tag switch { ShowcaseCard card => card.WorkId, TimelineCard card => card.WorkId, _ => null };
+                Assert.Equal(workId, Assert.Single(requestedWorks));
+            }
             SaveSnapshot(panel, $"dashboard-showcase-{width:0}.png");
         }
-        ((Border)Find(window, "DashboardHero")).Visibility = Visibility.Collapsed;
-        ((Grid)Find(window, "DashboardCollectionHeader")).Visibility = Visibility.Visible;
+
+        Populate(window.HomeView);
+        ((FrameworkElement)Find(window, "DashboardHero")).Visibility = Visibility.Collapsed;
+        ((FrameworkElement)Find(window, "DashboardCollectionHeader")).Visibility = Visibility.Visible;
         var scroll = (ScrollViewer)Find(window, "DashboardScroll");
         var root = (Grid)window.Content;
         window.Content = null;
         root.DataContext = window;
         root.Resources = window.Resources;
-        window.HomeView.DashboardTopBooks.RemoveAt(2);
-        window.HomeView.DashboardTopAuthors.RemoveAt(2);
-        window.HomeView.DashboardTopScreens.Add(window.HomeView.DashboardTopBooks[1]);
-        window.HomeView.DashboardTimelineDays.Add(window.HomeView.DashboardTimelineDays[0]);
         foreach (var height in new[] { 800d, 768d, 640d, 800d })
         {
             scroll.Visibility = Visibility.Visible;
             root.Measure(new Size(1280, height));
             root.Arrange(new Rect(0, 0, 1280, height));
             root.UpdateLayout();
-            Assert.True(height < 700 || scroll.ScrollableHeight == 0, $"height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, desired={scroll.DesiredSize}");
+            AssertScrollAccess(scroll);
+            if (height >= 768)
+                Assert.InRange(scroll.ScrollableHeight, 0, 1);
+            AssertWithin((Button)Find(window, "GlobalAddWorkButton"), root);
+            AssertWithin((TextBox)Find(window, "GlobalSearchBox"), root);
         }
         SaveSnapshot(root, "dashboard-full.png");
-        var dashboardAdd = (Button)Find(window, "DashboardAddWorkButton");
-        var dashboardBounds = new Rect(dashboardAdd.TranslatePoint(new Point(), root), dashboardAdd.RenderSize);
         window.ShowLibrary();
         root.Measure(new Size(1280, 800));
         root.Arrange(new Rect(0, 0, 1280, 800));
         root.UpdateLayout();
-        var libraryAdd = (Button)Find(window, "LibraryAddWorkButton");
-        Assert.Equal(dashboardBounds, new Rect(libraryAdd.TranslatePoint(new Point(), root), libraryAdd.RenderSize));
+        var add = (Button)Find(window, "GlobalAddWorkButton");
+        Assert.True(add.IsEnabled && add.Focusable);
+        AssertWithin(add, root);
+        AssertWithin((TextBox)Find(window, "GlobalSearchBox"), root);
+
+        // A shown host includes the title bar, matching the real minimum window's viewport.
+        window.ShowHome();
+        var compactHost = new Window
+        {
+            Content = root, Width = 980, Height = 640, WindowStyle = window.WindowStyle,
+            Style = window.Style, FontFamily = window.FontFamily, FontSize = window.FontSize,
+            Foreground = window.Foreground, Background = window.Background,
+            UseLayoutRounding = window.UseLayoutRounding, ShowActivated = false, ShowInTaskbar = false
+        };
+        TextOptions.SetTextFormattingMode(compactHost, TextOptions.GetTextFormattingMode(window));
+        InputMethod.SetIsInputMethodEnabled(compactHost, false);
+        try
+        {
+            compactHost.Show();
+            SettleAnimations();
+            compactHost.UpdateLayout();
+            Assert.InRange(scroll.ScrollableHeight, 0, 1);
+            foreach (var name in new[] { "DashboardRecentSection", "DashboardSideColumn", "DashboardJournalSection", "DashboardAuthorRanking" })
+                AssertWithin((FrameworkElement)Find(window, name), scroll);
+            AssertWithin(add, root);
+            AssertWithin((TextBox)Find(window, "GlobalSearchBox"), root);
+            SaveSnapshot(compactHost, "dashboard-full-compact.png");
+        }
+        finally { compactHost.Close(); }
     }
 
-    private static void AssertLibraryLayout()
+    private static void AssertLibraryLayout(TempDatabase context, string coverPath)
     {
-        var window = new MainWindow();
+        var window = new MainWindow(new LibraryApplication(context.Database));
         window.ShowLibrary();
-        Assert.Equal(Visibility.Visible, ((FrameworkElement)Find(window, "LibraryPane")).Visibility);
-        ((FrameworkElement)Find(window, "EmptyState")).Visibility = Visibility.Collapsed;
+        var works = Enumerable.Range(0, 12).Select(index => new MediaWork
+        {
+            Title = index == 11 ? "走夜路请放声歌唱：一段较长的副题" : $"收藏作品 {index:00}",
+            Kind = index < 9 ? "book" : "screen", PrimaryCoverPath = coverPath, AggregateRank = 2.4,
+            ExperienceCount = 1, LatestActivityOn = new DateOnly(2026, 9, 18)
+        }).ToList();
+        window.LibraryView.SetWorks(works);
         var list = (ListBox)Find(window, "WorkList");
+        var monthOverview = (ScrollViewer)Find(window, "MonthOverview");
+        var nextPage = (Button)Find(window, "NextPageButton");
+        var previousPage = (Button)Find(window, "PreviousPageButton");
         var root = (Grid)window.Content;
         window.Content = null;
         root.DataContext = window;
         root.Resources = window.Resources;
-        void Layout(double height)
+        double width = 1280, height = 800;
+        void Layout()
         {
-            root.Measure(new Size(1280, height));
-            root.Arrange(new Rect(0, 0, 1280, height));
-            root.UpdateLayout();
-        }
-        Layout(800);
-        for (var index = 0; index < 6; index++)
-            window.LibraryView.VisibleWorks.Add(new WorkCard(new MediaWork
+            for (var pass = 0; pass < 2; pass++)
             {
-                Title = "走夜路请放声歌唱",
-                Kind = "book",
-                AggregateRank = 2.4,
-                ExperienceCount = 1,
-                LatestActivityOn = new DateOnly(2026, 9, 18)
-            }));
-        window.LibraryView.RefreshMonths();
-        Layout(768);
-        Assert.Single(window.LibraryView.LibraryMonths);
-        Assert.Equal(Visibility.Collapsed, list.Visibility);
-        var monthOverview = (ScrollViewer)Find(window, "MonthOverview");
-        Assert.Equal(Visibility.Visible, monthOverview.Visibility);
-        SaveSnapshot(root, "library-months.png");
-        var monthButton = Descendants(monthOverview).OfType<Button>().Single(button => button.Name == "MonthDeckButton");
-        monthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Layout(768);
-        Assert.Equal(Visibility.Collapsed, monthOverview.Visibility);
-        Assert.Equal(Visibility.Visible, list.Visibility);
-        Assert.Equal(6, window.LibraryView.ExpandedMonthWorks.Count);
-        var scroll = Descendants(list).OfType<ScrollViewer>().First();
-        SaveSnapshot(root, "library-grid.png");
-        var tiles = Descendants(list).OfType<ListBoxItem>().ToArray();
-        Assert.Equal(6, tiles.Length);
-        var firstTileY = tiles[0].TranslatePoint(new Point(), list).Y;
-        Assert.All(tiles, tile =>
+                root.Measure(new Size(width, height));
+                root.Arrange(new Rect(0, 0, width, height));
+                root.UpdateLayout();
+            }
+        }
+        void AssertCurrentPage()
         {
-            var origin = tile.TranslatePoint(new Point(), list);
-            Assert.InRange(Math.Abs(origin.Y - firstTileY), 0, 0.5);
-            Assert.True(origin.X + tile.ActualWidth <= list.ActualWidth);
-        });
-        Assert.True(scroll.ScrollableHeight == 0,
-            $"List={list.ActualHeight}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, rows={string.Join(',', Descendants(list).OfType<ListBoxItem>().Select(item => item.ActualHeight))}");
-        Assert.Equal(Visibility.Collapsed, scroll.ComputedVerticalScrollBarVisibility);
-        var stationaryWheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
-        { RoutedEvent = Mouse.PreviewMouseWheelEvent };
-        list.RaiseEvent(stationaryWheel);
-        root.UpdateLayout();
-        Assert.True(stationaryWheel.Handled);
-        Assert.Equal(0, scroll.VerticalOffset);
-        root.Measure(new Size(980, 768));
-        root.Arrange(new Rect(0, 0, 980, 768));
-        root.UpdateLayout();
-        Assert.True(tiles[^1].TranslatePoint(new Point(), list).Y > tiles[0].TranslatePoint(new Point(), list).Y);
-        Assert.All(tiles, tile => Assert.True(tile.TranslatePoint(new Point(), list).X + tile.ActualWidth <= list.ActualWidth));
-        Layout(768);
-        var host = new Window { Content = root, Width = 1280, Height = 800, WindowStyle = WindowStyle.None, ShowActivated = false };
-        InputMethod.SetIsInputMethodEnabled(host, false);
-        host.Show();
-        host.UpdateLayout();
-        for (var index = 6; index < 20; index++)
-            window.LibraryView.VisibleWorks.Add(new WorkCard(new MediaWork { Title = $"作品 {index}", Kind = "book", LatestActivityOn = new DateOnly(2026, 9, 18) }));
-        window.LibraryView.RefreshMonths();
-        Layout(800);
-        Assert.True(scroll.ScrollableHeight > 0, $"items={list.Items.Count}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, width={scroll.ExtentWidth}");
-        Assert.Equal(Visibility.Visible, scroll.ComputedVerticalScrollBarVisibility);
-        list.ScrollIntoView(window.LibraryView.ExpandedMonthWorks[^1]);
-        root.UpdateLayout();
-        Assert.True(scroll.VerticalOffset > 0);
-        Assert.NotNull(list.ItemContainerGenerator.ContainerFromIndex(19));
-        ((Button)Find(window, "MonthBackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Layout(800);
-        Assert.Equal(Visibility.Visible, monthOverview.Visibility);
-        Assert.Equal(Visibility.Collapsed, list.Visibility);
-        Assert.Empty(window.LibraryView.ExpandedMonthWorks);
-        Assert.Equal(20, Assert.Single(window.LibraryView.LibraryMonths).Works.Count);
-        window.ShowHome();
-        Assert.Equal(Visibility.Collapsed, window.LibraryView.Visibility);
-        Assert.Equal(Visibility.Visible, ((FrameworkElement)Find(window, "NavigationRail")).Visibility);
+            Assert.Equal(window.LibraryView.PageWorks.Select(work => work.Id).Order(),
+                list.Items.OfType<WorkCard>().Select(work => work.Id).Order());
+            var tiles = Descendants(list).OfType<ListBoxItem>().ToArray();
+            Assert.Equal(window.LibraryView.PageWorks.Count, tiles.Length);
+            var groups = list.Items.Groups!.Cast<CollectionViewGroup>().Where(group => group.ItemCount > 0).ToArray();
+            Assert.Equal(window.LibraryView.PageWorks.Select(work => work.KindLabel).Distinct(), groups.Select(group => group.Name));
+            var panels = Descendants(list).OfType<Border>()
+                .Where(panel => panel.Name == "ShelfGroupPanel" && panel.ActualHeight > 0).ToArray();
+            Assert.Equal(groups.Length, panels.Length);
+            AssertNoOverlap(panels, list);
+            Assert.All(panels, panel => AssertWithin(panel, list));
+            AssertNoOverlap(tiles, list);
+            foreach (var tile in tiles)
+            {
+                AssertWithin(tile, list);
+                Assert.True(tile.Focusable);
+                Assert.Contains(Descendants(tile).OfType<Image>(), image =>
+                    image.Source is not null && image.ActualWidth > 0 && image.ActualHeight > 0);
+            }
+            var scroll = Descendants(list).OfType<ScrollViewer>().Single();
+            AssertScrollAccess(scroll);
+            Assert.InRange(scroll.ScrollableHeight, 0, 1);
+            AssertWithin((FrameworkElement)Find(window, "LibraryPager"), root);
+            AssertWithin(nextPage, root);
+            AssertWithin(previousPage, root);
+        }
+        void AssertEveryWorkIsReachable()
+        {
+            window.LibraryView.SetPage(0);
+            Layout();
+            Assert.False(previousPage.IsEnabled);
+            var found = new HashSet<string>();
+            var pages = window.LibraryView.PageCount;
+            for (var page = 0; page < pages; page++)
+            {
+                Assert.Equal(page, window.LibraryView.PageIndex);
+                AssertCurrentPage();
+                foreach (var card in window.LibraryView.PageWorks)
+                    Assert.True(found.Add(card.Id), "A work should appear once across library pages.");
+                Assert.Equal(page + 1 < pages, nextPage.IsEnabled);
+                if (page + 1 < pages)
+                {
+                    Assert.True(nextPage.Focusable);
+                    nextPage.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Layout();
+                }
+            }
+            Assert.Equal(works.Select(work => work.Id).Order(), found.Order());
+            if (pages > 1)
+            {
+                Assert.True(previousPage.IsEnabled && previousPage.Focusable);
+                previousPage.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Layout();
+                Assert.Equal(pages - 2, window.LibraryView.PageIndex);
+            }
+            window.LibraryView.SetPage(0);
+            Layout();
+        }
+        try
+        {
+            Layout();
+            Assert.False(window.LibraryView.IsMonthView);
+            Assert.Equal(Visibility.Visible, list.Visibility);
+            Assert.Equal(Visibility.Collapsed, monthOverview.Visibility);
+            Assert.Equal(1, window.LibraryView.PageCount);
+            Assert.Equal(works.Count, list.Items.Count);
+            AssertEveryWorkIsReachable();
+            SaveSnapshot(root, "library-grid.png");
 
-        host.Close();
-        window.Close();
+            width = 980; height = 640;
+            Layout();
+            Assert.True(window.LibraryView.PageCount > 1, "A compact window should use fewer works per page.");
+            AssertEveryWorkIsReachable();
+            SaveSnapshot(root, "library-grid-compact.png");
+            width = 1280; height = 800;
+            Layout();
+
+            window.LibraryView.SetMonthView(true);
+            Layout();
+            Assert.Single(window.LibraryView.LibraryMonths);
+            Assert.Single(window.LibraryView.PageMonths);
+            Assert.Equal(Visibility.Collapsed, list.Visibility);
+            Assert.Equal(Visibility.Visible, monthOverview.Visibility);
+            Assert.InRange(monthOverview.ScrollableHeight, 0, 1);
+            SaveSnapshot(root, "library-months.png");
+            var monthButton = Descendants(monthOverview).OfType<Button>().Single(button => button.Name == "MonthDeckButton");
+            AssertWithin(monthButton, monthOverview);
+            monthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout();
+            Assert.Equal(Visibility.Collapsed, monthOverview.Visibility);
+            Assert.Equal(Visibility.Visible, list.Visibility);
+            Assert.Equal(works.Count, window.LibraryView.ExpandedMonthWorks.Count);
+            AssertEveryWorkIsReachable();
+
+            for (var index = 12; index < 20; index++)
+                works.Add(new MediaWork
+                {
+                    Title = $"收藏作品 {index:00}", Kind = "book", PrimaryCoverPath = coverPath,
+                    LatestActivityOn = new DateOnly(2026, 9, 18)
+                });
+            window.LibraryView.SetWorks(works);
+            window.LibraryView.OpenMonth("2026-09");
+            Layout();
+            Assert.True(window.LibraryView.PageCount > 1);
+            Assert.Equal(works.Count, window.LibraryView.ExpandedMonthWorks.Count);
+            AssertEveryWorkIsReachable();
+            ((Button)Find(window, "MonthBackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout();
+            Assert.Equal(Visibility.Visible, monthOverview.Visibility);
+            Assert.Equal(Visibility.Collapsed, list.Visibility);
+            Assert.Empty(window.LibraryView.ExpandedMonthWorks);
+            Assert.Equal(works.Count, Assert.Single(window.LibraryView.LibraryMonths).Works.Count);
+            window.LibraryView.SetMonthView(false);
+            Layout();
+            Assert.Equal(Visibility.Visible, list.Visibility);
+            Assert.Equal(0, window.LibraryView.PageIndex);
+            AssertEveryWorkIsReachable();
+
+            var datedWorks = Enumerable.Range(0, 18).Select(index => new MediaWork
+            {
+                Title = $"月份作品 {index}", Kind = "book", PrimaryCoverPath = coverPath,
+                LatestActivityOn = new DateOnly(2025, 1, 1).AddMonths(index)
+            }).ToArray();
+            window.LibraryView.SetWorks(datedWorks);
+            window.LibraryView.SetMonthView(true);
+            Layout();
+            Assert.True(window.LibraryView.PageCount > 1);
+            var visitedMonths = new HashSet<string>();
+            for (var page = 0; page < window.LibraryView.PageCount; page++)
+            {
+                Assert.Equal(page, window.LibraryView.PageIndex);
+                var decks = Descendants(monthOverview).OfType<Button>().Where(button => button.Name == "MonthDeckButton").ToArray();
+                Assert.Equal(window.LibraryView.PageMonths.Count, decks.Length);
+                AssertNoOverlap(decks, monthOverview);
+                Assert.All(decks, deck => AssertWithin(deck, monthOverview));
+                Assert.InRange(monthOverview.ScrollableHeight, 0, 1);
+                foreach (var month in window.LibraryView.PageMonths) Assert.True(visitedMonths.Add(month.Key));
+                if (page + 1 < window.LibraryView.PageCount)
+                {
+                    nextPage.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Layout();
+                }
+            }
+            Assert.Equal(window.LibraryView.LibraryMonths.Select(month => month.Key).Order(), visitedMonths.Order());
+            var overviewPage = window.LibraryView.PageIndex;
+            var lastMonth = window.LibraryView.PageMonths[^1];
+            window.LibraryView.OpenMonth(lastMonth.Key);
+            Layout();
+            Assert.Equal(lastMonth.Key, window.LibraryView.Selection.ExpandedMonthKey);
+            ((Button)Find(window, "MonthBackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout();
+            Assert.Equal(overviewPage, window.LibraryView.PageIndex);
+            Assert.Contains(window.LibraryView.PageMonths, month => month.Key == lastMonth.Key);
+            window.ShowHome();
+            Assert.Equal(Visibility.Collapsed, window.LibraryView.Visibility);
+            Assert.Equal(Visibility.Visible, ((FrameworkElement)Find(window, "NavigationRail")).Visibility);
+        }
+        finally { window.Close(); }
     }
 
     private static void AssertMonthFiltering()
     {
-        var window = new MainWindow();
-        window.ShowLibrary();
         var book = new MediaWork { Title = "September book", Author = "Writer", Kind = "book", LatestActivityOn = new DateOnly(2026, 9, 20) };
         var screen = new MediaWork { Title = "August screen", Kind = "screen", LatestActivityOn = new DateOnly(2026, 8, 20) };
         var undated = new MediaWork { Title = "Unrecorded", Kind = "book" };
-        var view = window.LibraryView;
+        var view = new Yiye.Views.LibraryView();
+        var list = (ListBox)view.FindName("WorkList");
         view.SetWorks([book, screen, undated]);
+        view.Measure(new Size(1160, 680));
+        view.Arrange(new Rect(0, 0, 1160, 680));
+        view.UpdateLayout();
         Assert.Equal(3, view.LibraryMonths.Count);
+        Assert.False(view.IsMonthView);
+        Assert.Equal(3, list.Items.Count);
+        Assert.Equal(Visibility.Visible, list.Visibility);
         view.OpenMonth(view.LibraryMonths[0].Key);
-        Assert.Same(book, Assert.Single(view.ExpandedMonthWorks).Value);
+        Assert.True(view.IsMonthView);
+        Assert.Equal(book.Id, Assert.Single(view.ExpandedMonthWorks).Id);
         view.SetFilter("all", "Writer");
-        Assert.Same(book, Assert.Single(Assert.Single(view.LibraryMonths).Works).Value);
+        Assert.Equal(book.Id, Assert.Single(Assert.Single(view.LibraryMonths).Works).Id);
         Assert.Empty(view.ExpandedMonthWorks);
         Assert.Equal(Visibility.Visible, ((ScrollViewer)view.FindName("MonthOverview")).Visibility);
         view.SetFilter("screen", "");
-        Assert.Same(screen, Assert.Single(Assert.Single(view.LibraryMonths).Works).Value);
+        Assert.Equal(screen.Id, Assert.Single(Assert.Single(view.LibraryMonths).Works).Id);
+        view.SetMonthView(false);
+        Assert.Equal(screen.Id, Assert.IsType<WorkCard>(Assert.Single(list.Items.Cast<object>())).Id);
+        Assert.Equal("影视", Assert.Single(list.Items.Groups!.Cast<CollectionViewGroup>(), group => group.ItemCount > 0).Name);
+        string? requested = null;
+        view.WorkRequested += id => requested = id;
+        list.SelectedItem = view.VisibleWorks[0];
+        Assert.Equal(screen.Id, requested);
+        Assert.Null(list.SelectedItem);
         view.SetFilter("screen", "missing");
         Assert.Empty(view.LibraryMonths);
         Assert.Empty(view.ExpandedMonthWorks);
         Assert.Equal(Visibility.Visible, ((FrameworkElement)view.FindName("EmptyState")).Visibility);
         Assert.Equal(Visibility.Collapsed, ((FrameworkElement)view.FindName("MonthOverview")).Visibility);
-        Assert.Equal(Visibility.Collapsed, ((FrameworkElement)view.FindName("WorkList")).Visibility);
-        window.Close();
+        Assert.Equal(Visibility.Collapsed, list.Visibility);
     }
 
-    private static void AssertDetailLayout()
+    private static void AssertDetailLayout(TempDatabase context, string coverPath)
     {
-        var window = new MainWindow();
+        var window = new MainWindow(new LibraryApplication(context.Database));
         window.DetailView.Visibility = Visibility.Visible;
+        window.HomeView.Visibility = Visibility.Collapsed;
         ((ScrollViewer)Find(window, "DashboardScroll")).Visibility = Visibility.Collapsed;
-        ((FrameworkElement)Find(window, "DetailEmpty")).Visibility = Visibility.Collapsed;
-        ((FrameworkElement)Find(window, "HistoryEmpty")).Visibility = Visibility.Collapsed;
+        var work = new MediaWork
+        {
+            Id = "detail-layout", Title = "真事隐", Subtitle = "康熙废储与正史虚构", Author = "孙立天", Kind = "book",
+            ExperienceCount = 1, RatedExperienceCount = 1, AggregateRank = 3.5, LatestActivityOn = new DateOnly(2026, 9, 13)
+        };
+        var covers = new[] { new WorkCover { WorkId = work.Id, FileName = Path.GetFileName(coverPath), FilePath = coverPath } };
+        var experiences = Enumerable.Range(1, 8).Select(index => new MediaExperience
+        {
+            WorkId = work.Id, CompletedOn = new DateOnly(2026, 9, index),
+            Allure = 3, Immersion = 4, Rationality = 5, Illumination = 4,
+            Notes = $"第 {index} 次阅读的记录。这里保留当时记下的内容，之后仍可以打开查看和编辑。"
+        }).ToArray();
+        window.DetailView.Render(new WorkDetail(work, covers, experiences.Take(1).ToArray()));
         var scroll = (ScrollViewer)Find(window, "DetailScroll");
-        scroll.Visibility = Visibility.Visible;
-        foreach (var (name, text) in new[]
-        {
-            ("DetailTitleText", "真事隐"), ("DetailSubtitleText", "康熙废储与正史虚构"),
-            ("DetailAuthorText", "孙立天"), ("DetailMetaText", "书籍 · 已记录 1 次 · 最近 2026-09-13"),
-            ("DetailRankText", "3.5 / 3.9"), ("DetailCountText", "阅读 1 次"),
-            ("DetailRatingCountText", "来自 1 次评分"), ("HistoryCaptionText", "共 1 次")
-        })
-        {
-            var label = (TextBlock)Find(window, name);
-            label.Text = text;
-            label.Visibility = Visibility.Visible;
-        }
-        window.DetailView.CompletedExperiences.Add(new ExperienceArchiveCard
-        {
-            ArchiveNumber = 1,
-            Experience = new MediaExperience
-            {
-                WorkId = "detail-layout",
-                CompletedOn = new DateOnly(2026, 9, 13),
-                Allure = 3,
-                Immersion = 4,
-                Rationality = 5,
-                Illumination = 4
-            }
-        });
         var root = (Grid)window.Content;
         window.Content = null;
         root.DataContext = window;
@@ -669,14 +869,37 @@ public sealed class UiSmokeTests
         foreach (var height in new[] { 800d, 640d, 800d })
         {
             Layout(height);
-            Assert.True(height < 700 || scroll.ScrollableHeight == 0,
-                $"Detail height={height}, extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}");
+            AssertDetailActions(window);
+            AssertScrollAccess(scroll);
         }
         SaveSnapshot(root, "detail-single-record.png");
-        window.DetailView.CompletedExperiences.Add(window.DetailView.CompletedExperiences[0]);
-        Layout(800);
-        Assert.True(scroll.ScrollableHeight > 0, "Multiple completion records remain scrollable.");
-        window.Close();
+        window.DetailView.Render(new WorkDetail(work, covers, experiences));
+        var host = new Window { Content = root, Width = 1280, Height = 800, WindowStyle = WindowStyle.None, ShowActivated = false };
+        InputMethod.SetIsInputMethodEnabled(host, false);
+        try
+        {
+            host.Show();
+            host.UpdateLayout();
+            Assert.Equal(experiences.Length, window.DetailView.CompletedExperiences.Count);
+            var history = (ListBox)Find(window, "HistoryList");
+            Assert.All(Descendants(history).OfType<ScrollViewer>(), inner =>
+                Assert.InRange(inner.ScrollableHeight, 0, 1));
+            Assert.True(scroll.ScrollableHeight > 0, "Long records should expand into the page's scroll area.");
+            history.ScrollIntoView(window.DetailView.CompletedExperiences[^1]);
+            host.UpdateLayout();
+            var last = Assert.IsAssignableFrom<FrameworkElement>(history.ItemContainerGenerator.ContainerFromIndex(experiences.Length - 1));
+            AssertWithin(last, history, vertical: false);
+            var edit = Assert.Single(Descendants(last).OfType<Button>());
+            edit.BringIntoView();
+            var frame = new DispatcherFrame();
+            host.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            host.UpdateLayout();
+            Assert.True(edit.IsEnabled && edit.Focusable);
+            AssertWithin(edit, scroll);
+            AssertScrollAccess(scroll);
+        }
+        finally { host.Close(); window.Close(); }
     }
 
     private static void SnapshotWindow(Window window, string fileName)
@@ -685,6 +908,75 @@ public sealed class UiSmokeTests
         window.UpdateLayout();
         SaveSnapshot(window, fileName);
         window.Hide();
+    }
+
+    private static void AssertDetailActions(MainWindow window)
+    {
+        var scroll = (ScrollViewer)Find(window, "DetailScroll");
+        scroll.ScrollToTop();
+        scroll.UpdateLayout();
+        var cover = (Button)Find(window, "DetailCoverButton");
+        var information = (FrameworkElement)Find(window, "CoverPlate");
+        var records = (FrameworkElement)Find(window, "DetailRecordsPanel");
+        Assert.NotNull(window.DetailView.CoverImageSource);
+        AssertWithin(information, scroll, vertical: false);
+        AssertWithin(records, scroll, vertical: false);
+        AssertNoOverlap([information, records], scroll);
+        AssertWithin((TextBlock)Find(window, "DetailTitleText"), information);
+        AssertWithin((FrameworkElement)Find(window, "HistoryHeader"), records);
+        AssertWithin(cover, scroll, vertical: false);
+        Assert.True(cover.IsEnabled && cover.Focusable);
+        var actions = (FrameworkElement)Find(window, "HeroActions");
+        var buttons = Descendants(actions).OfType<Button>().ToArray();
+        Assert.NotEmpty(buttons);
+        AssertNoOverlap(buttons, actions);
+        foreach (var button in buttons)
+        {
+            Assert.True(button.IsEnabled && button.Focusable);
+            AssertWithin(button, actions);
+            button.BringIntoView();
+            scroll.UpdateLayout();
+            AssertWithin(button, scroll);
+        }
+        scroll.ScrollToTop();
+        scroll.UpdateLayout();
+    }
+
+    private static void AssertScrollAccess(ScrollViewer scroll)
+    {
+        Assert.True(scroll.ViewportWidth > 0 && scroll.ViewportHeight > 0, "The content viewport must be visible.");
+        Assert.True(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
+            $"Content must fit horizontally: extent={scroll.ExtentWidth}, viewport={scroll.ViewportWidth}.");
+        scroll.ScrollToBottom();
+        scroll.UpdateLayout();
+        Assert.InRange(Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight), 0, 1);
+        scroll.ScrollToTop();
+        scroll.UpdateLayout();
+        Assert.InRange(scroll.VerticalOffset, 0, 1);
+    }
+
+    private static void AssertWithin(FrameworkElement element, FrameworkElement container, bool vertical = true)
+    {
+        Assert.True(element.ActualWidth > 0 && element.ActualHeight > 0, $"{element.Name} must be rendered.");
+        var bounds = element.TransformToAncestor(container).TransformBounds(new Rect(element.RenderSize));
+        Assert.True(bounds.Left >= -0.5 && bounds.Right <= container.ActualWidth + 0.5,
+            $"{element.Name} exceeds horizontal bounds: {bounds}, container width={container.ActualWidth}.");
+        if (vertical)
+            Assert.True(bounds.Top >= -0.5 && bounds.Bottom <= container.ActualHeight + 0.5,
+                $"{element.Name} must be reachable within the viewport: {bounds}, container height={container.ActualHeight}.");
+    }
+
+    private static void AssertNoOverlap(IEnumerable<FrameworkElement> elements, FrameworkElement container)
+    {
+        var bounds = elements.Select(element => element.TransformToAncestor(container)
+            .TransformBounds(new Rect(element.RenderSize))).ToArray();
+        for (var first = 0; first < bounds.Length; first++)
+            for (var second = first + 1; second < bounds.Length; second++)
+            {
+                var intersection = Rect.Intersect(bounds[first], bounds[second]);
+                Assert.True(intersection.IsEmpty || intersection.Width <= 0.5 || intersection.Height <= 0.5,
+                    $"Items {first} and {second} overlap: {bounds[first]} and {bounds[second]}.");
+            }
     }
 
     private static void AssertTimelineTemplate(MainWindow mainWindow)
@@ -713,8 +1005,8 @@ public sealed class UiSmokeTests
         Assert.All(buttons, button =>
         {
             Assert.IsType<TimelineCard>(button.Tag);
-            Assert.True(button.ActualWidth > 180, "Timeline actions should fill the date card.");
-            Assert.True(button.Focusable);
+            AssertWithin(button, presenter);
+            Assert.True(button.IsEnabled && button.Focusable);
         });
         SaveSnapshot(presenter, "timeline-day.png");
     }

@@ -9,7 +9,7 @@ namespace Yiye;
 
 public enum LibraryPageKind { Home, Library, Detail }
 
-public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
+public partial class MainWindow : Window
 {
     private readonly LibraryApplication _library;
     private readonly List<MediaWork> _works = [];
@@ -62,7 +62,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     public void ShowLibrary()
     {
         Navigate(LibraryPageKind.Library);
-        LibraryPage.FocusSearch();
+        GlobalSearchBox.Focus();
     }
     private void Navigate(LibraryPageKind page)
     {
@@ -79,8 +79,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         LibraryPage.Visibility = page == LibraryPageKind.Library ? Visibility.Visible : Visibility.Collapsed;
         DetailPage.Visibility = page == LibraryPageKind.Detail ? Visibility.Visible : Visibility.Collapsed;
         var section = page == LibraryPageKind.Detail ? _detailOrigin : page;
-        HomeButton.Appearance = section == LibraryPageKind.Home ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
-        LibraryButton.Appearance = section == LibraryPageKind.Library ? Wpf.Ui.Controls.ControlAppearance.Primary : Wpf.Ui.Controls.ControlAppearance.Transparent;
+        System.Windows.Controls.Primitives.Selector.SetIsSelected(HomeButton, section == LibraryPageKind.Home);
+        System.Windows.Controls.Primitives.Selector.SetIsSelected(LibraryButton, section == LibraryPageKind.Library);
         if (IsLoaded && SystemParameters.ClientAreaAnimation)
         {
             FrameworkElement view = page switch { LibraryPageKind.Home => DashboardPage, LibraryPageKind.Library => LibraryPage, _ => DetailPage };
@@ -145,6 +145,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
     private void Home_Click(object sender, RoutedEventArgs e) => ShowHome();
     private void Library_Click(object sender, RoutedEventArgs e) => ShowLibrary();
+    private void GlobalAddWork_Click(object sender, RoutedEventArgs e) => AddWork();
+    private void GlobalSearch_Click(object sender, RoutedEventArgs e) => SearchLibrary();
+    private void GlobalSearch_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        SearchLibrary();
+        e.Handled = true;
+    }
+    private void SearchLibrary()
+    {
+        Navigate(LibraryPageKind.Library);
+        LibraryPage.SetFilter("all", GlobalSearchBox.Text);
+        GlobalSearchBox.Focus();
+    }
     private async void OpenWork(string workId) => await RunAsync(() => OpenWorkAsync(workId), "无法打开作品");
     private async void AddWork()
     {

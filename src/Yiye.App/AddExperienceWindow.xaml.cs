@@ -29,10 +29,11 @@ public partial class AddExperienceWindow : Window
         var editingCompleted = existing?.CompletedOn is not null;
         HeadingText.Text = editingCompleted
             ? (kind == "book" ? "编辑本次阅读" : "编辑本次观看")
-            : (kind == "book" ? "记录读完的一本书" : "记录看完的一部影视");
+            : (kind == "book" ? "记一次阅读" : "记一次观看");
+        Title = HeadingText.Text;
         IntroText.Text = editingCompleted
-            ? "修改日期、最终评分或总结。"
-            : "只收录已经完成的这一次，评分与总结可以稍后补充。";
+            ? "修改完成日期、评分或感想。"
+            : "记下完成日期，评分和感想可以稍后补充。";
         EndDateLabel.Text = kind == "book" ? "读完日期" : "看完日期";
         PopulateRatingBox(AllureBox, RatingScale.AllureMaximum);
         foreach (var box in new[] { ImmersionBox, RationalityBox, IlluminationBox })
@@ -46,11 +47,12 @@ public partial class AddExperienceWindow : Window
         SetRating(RationalityBox, existing?.Rationality);
         SetRating(IlluminationBox, existing?.Illumination);
         CompletionPanel.Visibility = Visibility.Visible;
-        SaveButton.Content = editingCompleted ? "保存修改" : "保存完成记录";
+        SaveButton.Content = editingCompleted ? "保存修改" : "保存记录";
         DeleteButton.Visibility = existing is not null ? Visibility.Visible : Visibility.Collapsed;
         if (existing is not null && !editingCompleted)
         {
             HeadingText.Text = kind == "book" ? "完成这次阅读" : "完成这次观看";
+            Title = HeadingText.Text;
             IntroText.Text = "查看已有笔记和进度，填写完成日期后保存。";
         }
         HistoricalProgressPanel.Visibility = progress?.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -63,14 +65,14 @@ public partial class AddExperienceWindow : Window
     private void Form_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var wide = e.NewSize.Width >= 760;
-        CompletionPanel.ColumnDefinitions[1].Width = new GridLength(wide ? 20 : 0);
+        CompletionPanel.ColumnDefinitions[1].Width = new GridLength(wide ? 32 : 0);
         CompletionPanel.ColumnDefinitions[2].Width = wide ? new GridLength(1.1, GridUnitType.Star) : new GridLength(0);
         Grid.SetColumn(RatingSection, wide ? 2 : 0);
         Grid.SetRow(RatingSection, wide ? 0 : 1);
         Grid.SetRowSpan(RatingSection, wide ? 3 : 1);
         Grid.SetRow(NotesSection, wide ? 1 : 2);
         Grid.SetRow(HistoricalProgressPanel, wide ? 2 : 3);
-        RatingSection.Margin = wide ? new Thickness() : new Thickness(0, 14, 0, 0);
+        RatingSection.Margin = wide ? new Thickness() : new Thickness(0, 24, 0, 0);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -145,7 +147,7 @@ public partial class AddExperienceWindow : Window
         var values = new[] { GetRating(AllureBox), GetRating(ImmersionBox), GetRating(RationalityBox), GetRating(IlluminationBox) };
         if (values.Any(value => value is null))
         {
-            RankPreview.Text = values.All(value => value is null) ? "未评分" : "评分未完成";
+            RankPreview.Text = values.All(value => value is null) ? "未评分" : $"已评 {values.Count(value => value is not null)}/4 项";
             return;
         }
         var rank = RatingScale.Calculate(values[0], values[1], values[2], values[3]);
@@ -166,7 +168,7 @@ public partial class AddExperienceWindow : Window
     private static void PopulateRatingBox(ComboBox box, int maximum)
     {
         box.Loaded += RatingBox_Loaded;
-        box.Items.Add(new ComboBoxItem { Content = "不设置", Tag = string.Empty });
+        box.Items.Add(new ComboBoxItem { Content = "未评分", Tag = string.Empty });
         for (var score = RatingScale.Minimum; score <= maximum; score++)
         {
             box.Items.Add(new ComboBoxItem { Content = score.ToString(), Tag = score.ToString() });

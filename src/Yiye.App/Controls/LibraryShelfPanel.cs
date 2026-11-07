@@ -6,10 +6,18 @@ namespace Yiye.Controls;
 /// <summary>Fits equal-width cover tiles to the available shelf width.</summary>
 public sealed class LibraryShelfPanel : Panel
 {
-    private const double MinimumTileWidth = 144;
+    public static readonly DependencyProperty MinimumTileWidthProperty = DependencyProperty.Register(
+        nameof(MinimumTileWidth), typeof(double), typeof(LibraryShelfPanel),
+        new FrameworkPropertyMetadata(180d, FrameworkPropertyMetadataOptions.AffectsMeasure),
+        value => value is double width && double.IsFinite(width) && width > 0);
+    public double MinimumTileWidth
+    {
+        get => (double)GetValue(MinimumTileWidthProperty);
+        set => SetValue(MinimumTileWidthProperty, value);
+    }
     private double _rowHeight;
 
-    private static int Columns(double width) => Math.Max(1, (int)(width / MinimumTileWidth));
+    private int Columns(double width) => Math.Max(1, (int)(width / MinimumTileWidth));
 
     protected override Size MeasureOverride(Size availableSize)
     {

@@ -15,6 +15,7 @@ public partial class ManageCoversWindow : Window
     private readonly CoverRepository _repository;
     private readonly MediaWork _work;
     private bool _busy;
+    private IInputElement? _previewSource;
 
     public ManageCoversWindow(CoverRepository repository, MediaWork work)
     {
@@ -50,7 +51,7 @@ public partial class ManageCoversWindow : Window
             Covers.Add(new CoverCard(cover));
         }
         CoverCountText.Text = Covers.Count == 0
-            ? $"{_work.Title} · 可以用多张封面表示不同版本"
+            ? _work.Title
             : $"{_work.Title} · {Covers.Count} 张封面 · 第一张作为主封面";
         EmptyState.Visibility = Covers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         CoverScroll.Visibility = Covers.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -117,7 +118,7 @@ public partial class ManageCoversWindow : Window
         await ExecuteAndReloadAsync(() => _repository.DeleteCoverAsync(_work.Id, cover.Id), "无法删除封面");
     }
 
-    private void PreviewCover_Click(object sender, MouseButtonEventArgs e)
+    private void PreviewCover_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: CoverCard cover })
         {
@@ -130,7 +131,10 @@ public partial class ManageCoversWindow : Window
             CoverImageConverter.DefaultDecodePixelWidth,
             System.Globalization.CultureInfo.InvariantCulture) as ImageSource;
         PreviewCaptionText.Text = $"{_work.Title} · {cover.PositionLabel}";
+        _previewSource = Keyboard.FocusedElement;
+        GalleryBody.IsEnabled = false;
         PreviewOverlay.Visibility = Visibility.Visible;
+        ClosePreviewButton.Focus();
         e.Handled = true;
     }
 
@@ -138,7 +142,18 @@ public partial class ManageCoversWindow : Window
     {
         PreviewOverlay.Visibility = Visibility.Collapsed;
         PreviewImage.Source = null;
+        GalleryBody.IsEnabled = true;
+        if (_previewSource is not null) Keyboard.Focus(_previewSource);
+        _previewSource = null;
         e.Handled = true;
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && PreviewOverlay.Visibility == Visibility.Visible)
+        {
+            ClosePreview_Click(sender, e);
+        }
     }
 
     private void PreviewPanel_Click(object sender, MouseButtonEventArgs e) => e.Handled = true;
