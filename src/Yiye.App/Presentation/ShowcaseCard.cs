@@ -2,9 +2,12 @@ using Yiye.Models;
 
 namespace Yiye.Presentation;
 
-public sealed class ShowcaseCard(DashboardShowcaseItem value)
+public sealed class ShowcaseCard(DashboardShowcaseItem value, int position = 0)
 {
     public DashboardShowcaseItem Value { get; } = value;
+    public int Position { get; } = position;
+    public string PositionLabel => Position.ToString("00");
+    public bool IsLead => Position == 1;
     public string WorkId => Value.WorkId;
     public string Title => Value.Title;
     public string Kind => Value.Kind;
@@ -13,6 +16,7 @@ public sealed class ShowcaseCard(DashboardShowcaseItem value)
     public int CompletionCount => Value.CompletionCount;
     public int RatingCount => Value.RatingCount;
     public double? AggregateRank => Value.AggregateRank;
+    public double ScoreRatio => RatingScale.GetPercentage(AggregateRank) ?? 0;
     public DateOnly FirstCompletedOn => Value.FirstCompletedOn;
     public DateOnly LatestCompletedOn => Value.LatestCompletedOn;
 

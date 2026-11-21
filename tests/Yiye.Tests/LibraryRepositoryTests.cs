@@ -324,7 +324,7 @@ public sealed class LibraryRepositoryTests
                 Allure = 3, Immersion = immersion, Rationality = 4, Illumination = 4
             });
         }
-        var before = (await context.Repository.GetDashboardShowcaseAsync()).TopAuthors;
+        var before = (await context.Repository.GetDashboardShowcaseAsync(authorLimit: 3)).TopAuthors;
         Assert.Equal(["Alpha", "Beta", "Gamma"], before.Select(author => author.Author));
         Assert.Equal([4.5, 4.2, 4.2], before.Select(author => author.Score));
 
@@ -335,7 +335,7 @@ public sealed class LibraryRepositoryTests
             WorkId = unrelated.Id, CompletedOn = new DateOnly(2026, 10, 1),
             Allure = 1, Immersion = 1, Rationality = 1, Illumination = 1
         });
-        var after = (await context.Repository.GetDashboardShowcaseAsync()).TopAuthors;
+        var after = (await context.Repository.GetDashboardShowcaseAsync(authorLimit: 3)).TopAuthors;
         Assert.Equal(before.Select(author => (author.Author, author.Score)), after.Select(author => (author.Author, author.Score)));
     }
 

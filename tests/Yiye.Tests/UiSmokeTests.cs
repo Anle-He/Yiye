@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Yiye.Models;
+using Yiye.Controls;
 
 namespace Yiye.Tests;
 
@@ -34,7 +35,7 @@ public sealed class UiSmokeTests
                     PixelFormats.Bgr24, null, Enumerable.Repeat((byte)120, 18).ToArray(), 6)));
                 using (var output = File.Create(layoutCover)) layoutEncoder.Save(output);
                 AssertExperienceRatingTemplate(mainWindow);
-                AssertTimelineTemplate(mainWindow);
+                AssertBalancedTitleLayout(mainWindow);
                 AssertDashboardLayout(mainWindow, layoutCover);
                 AssertDetailLayout(context, layoutCover);
                 AssertLibraryLayout(context, layoutCover);
@@ -198,7 +199,8 @@ public sealed class UiSmokeTests
             window.ApplyChangeAsync(library.SaveCompletionAsync(experience, editing: false).GetAwaiter().GetResult()).GetAwaiter().GetResult();
             Assert.Equal(book.Id, window.DetailView.Work!.Id);
             Assert.Single(window.DetailView.CompletedExperiences);
-            Assert.Equal("1", ((TextBlock)Find(window, "DashboardExperienceCountText")).Text);
+            Assert.Equal("1", ((TextBlock)Find(window, "DashboardBookCountText")).Text);
+            Assert.Equal("0", ((TextBlock)Find(window, "DashboardScreenCountText")).Text);
             Assert.Equal(book.Id, Assert.Single(window.HomeView.DashboardTopBooks).WorkId);
             window.ApplyChangeAsync(library.DeleteWorkAsync(screen.Id).GetAwaiter().GetResult()).GetAwaiter().GetResult();
             Assert.Equal(book.Id, window.DetailView.Work.Id);
@@ -465,12 +467,46 @@ public sealed class UiSmokeTests
         }
     }
 
+    private static void AssertBalancedTitleLayout(MainWindow window)
+    {
+        var title = new BalancedTitleBlock
+        {
+            Title = "长城与明代朝政", FontFamily = window.FontFamily,
+            FontSize = 15, FontWeight = FontWeights.Medium, Height = 42,
+            LineHeight = 21, LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
+            TextAlignment = TextAlignment.Center
+        };
+        TextOptions.SetTextFormattingMode(title, TextFormattingMode.Display);
+        foreach (var width in new[] { 90d, 120d, 90d })
+        {
+            title.Measure(new Size(width, 42));
+            title.Arrange(new Rect(0, 0, width, 42));
+            title.UpdateLayout();
+            Assert.Equal(width == 120 ? "长城与明代朝政" : "长城与\n明代朝政", title.Text);
+            Assert.InRange(title.ContentEnd.GetCharacterRect(LogicalDirection.Backward).Bottom, 0, 42);
+        }
+        foreach (var (text, expected) in new[]
+        {
+            ("新世纪福音战士", "新世纪\n福音战士"),
+            ("没有人给他写信的上校", "没有人给他\n写信的上校")
+        })
+        {
+            title.Title = text;
+            title.Measure(new Size(90, 42));
+            title.Arrange(new Rect(0, 0, 90, 42));
+            title.UpdateLayout();
+            Assert.Equal(expected, title.Text);
+            Assert.InRange(title.ContentEnd.GetCharacterRect(LogicalDirection.Backward).Bottom, 0, 42);
+        }
+    }
+
     private static void AssertDashboardLayout(MainWindow window, string coverPath)
     {
         var samples = Enumerable.Range(1, 6).Select(index => new DashboardShowcaseItem
         {
             WorkId = index.ToString(),
-            Title = index == 6 ? "一部标题很长的作品，封面与标题仍应可以辨认和打开" : $"收藏作品 {index}",
+            Title = index is 3 or 6 ? "一部标题很长的作品，封面与标题仍应可以辨认和打开" : $"收藏作品 {index}",
             Kind = index <= 3 ? "book" : "screen",
             Author = "示例作者",
             PrimaryCoverPath = coverPath,
@@ -482,22 +518,24 @@ public sealed class UiSmokeTests
         }).ToArray();
         void Populate(Yiye.Views.DashboardView target)
         {
-            foreach (var work in samples)
+            var works = samples.Select(item => new MediaWork
             {
-                (work.Kind == "book" ? target.DashboardTopBooks : target.DashboardTopScreens).Add(new ShowcaseCard(work));
-                target.DashboardRecentWorks.Add(new ShowcaseCard(work));
-                if (target.DashboardTimelineDays.Count < 3) target.DashboardTimelineDays.Add(new DashboardTimelineDay
+                Id = item.WorkId, Title = item.Title, Kind = item.Kind,
+                ExperienceCount = item.CompletionCount, RatedExperienceCount = item.RatingCount
+            }).Append(new MediaWork { Id = "unread", Title = "尚未读完的书", Kind = "book" }).ToArray();
+            target.Render(works, new DashboardSnapshot([], new DashboardShowcase
+            {
+                CompletedWorks = samples,
+                TopAuthors = Enumerable.Range(1, 8).Select(index => new DashboardAuthorRank
                 {
-                    Date = work.LatestCompletedOn,
-                    Items = [new TimelineCard(new DashboardTimelineItem
-                    {
-                        Id = $"event-{work.WorkId}", WorkId = work.WorkId, Title = work.Title, Kind = work.Kind
-                    })]
-                });
-            }
-            for (var index = 1; index <= 3; index++)
-                target.DashboardTopAuthors.Add(new AuthorCard(new DashboardAuthorRank
-                { Position = index, Author = $"作者 {index}", WorkCount = 2, RatingCount = 3, Score = 3.5 }));
+                    Position = index,
+                    Author = new[] { "示例作者", "加西亚·马尔克斯", "Jane Austen", "村上春树", "林晓光", "波伏瓦", "鲁迅", "毛姆" }[index - 1],
+                    WorkCount = index == 1 ? 3 : 2, RatingCount = 3, Score = index == 3 ? 4.2 : 4.8 - index * 0.3
+                }).ToArray()
+            }));
+            Assert.Equal("3", ((TextBlock)target.FindName("DashboardBookCountText")).Text);
+            Assert.Equal("3", ((TextBlock)target.FindName("DashboardScreenCountText")).Text);
+            Assert.Equal(Visibility.Visible, ((Grid)target.FindName("DashboardCompletionRatio")).Visibility);
         }
 
         // The isolated view verifies requests without routing synthetic IDs to a database.
@@ -517,7 +555,7 @@ public sealed class UiSmokeTests
             var recent = (ItemsControl)view.FindName("RecentWorkPicker");
             Assert.Equal(samples.Length, recent.Items.Count);
             var recentButtons = Descendants(recent).OfType<Button>().Where(button => button.Tag is ShowcaseCard).ToArray();
-            Assert.Equal(samples.Select(item => item.WorkId), recentButtons.Select(button => ((ShowcaseCard)button.Tag).WorkId));
+            Assert.Equal(samples.OrderByDescending(item => item.LatestCompletedOn).Select(item => item.WorkId), recentButtons.Select(button => ((ShowcaseCard)button.Tag).WorkId));
             AssertNoOverlap(recentButtons, recent);
             foreach (var button in recentButtons)
             {
@@ -533,21 +571,50 @@ public sealed class UiSmokeTests
                 AssertNoOverlap(buttons, ranking);
                 Assert.All(buttons, button => AssertWithin(button, ranking));
             }
-            var sections = new[] { "DashboardRecentSection", "DashboardSideColumn", "DashboardJournalSection" }
+            var sections = new[] { "DashboardRecentSection", "DashboardSideColumn" }
                 .Select(name => (FrameworkElement)view.FindName(name)).ToArray();
             Assert.All(sections, section => AssertWithin(section, panel));
             AssertNoOverlap(sections, panel);
-            Assert.Equal(3, ((ItemsControl)view.FindName("DashboardTimelineList")).Items.Count);
-            foreach (var button in Descendants(panel).OfType<Button>().Where(button => button.Tag is ShowcaseCard or TimelineCard))
+            AssertDashboardRankingsFillWidth(view);
+            AssertDashboardRankingVisuals(view, checkTextBounds: width >= 850);
+            foreach (var button in Descendants(panel).OfType<Button>().Where(button => button.Tag is ShowcaseCard))
             {
                 Assert.True(button.IsEnabled && button.Focusable);
                 requestedWorks.Clear();
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                var workId = button.Tag switch { ShowcaseCard card => card.WorkId, TimelineCard card => card.WorkId, _ => null };
-                Assert.Equal(workId, Assert.Single(requestedWorks));
+                Assert.Equal(((ShowcaseCard)button.Tag).WorkId, Assert.Single(requestedWorks));
             }
             SaveSnapshot(panel, $"dashboard-showcase-{width:0}.png");
         }
+
+        AssertAuthorCloudLayouts(view, samples);
+
+        var missingCover = new DashboardShowcaseItem
+        {
+            WorkId = "missing-cover", Title = "没有封面的书", Kind = "book",
+            PrimaryCoverPath = coverPath + ".missing", CompletionCount = 1, RatingCount = 1, AggregateRank = 2.4,
+            Author = "缺图作者",
+            LatestCompletedOn = new DateOnly(2026, 10, 1)
+        };
+        view.Render([new MediaWork { Id = missingCover.WorkId, Title = missingCover.Title, Kind = "book" }],
+            new DashboardSnapshot([], new DashboardShowcase
+            {
+                CompletedWorks = [missingCover],
+                TopAuthors = [new DashboardAuthorRank { Position = 1, Author = "缺图作者", WorkCount = 1, RatingCount = 1, Score = 3.1 }]
+            }));
+        panel.Measure(new Size(850, double.PositiveInfinity));
+        panel.Arrange(new Rect(0, 0, 850, panel.DesiredSize.Height));
+        panel.UpdateLayout();
+        Assert.Null(Assert.Single(Descendants(panel).OfType<Image>(), image => image.Name == "RecentCoverImage").Source);
+        Assert.Equal(Visibility.Visible, Assert.Single(Descendants(panel).OfType<Border>(), border => border.Name == "RecentPlaceholder").Visibility);
+        Assert.Null(Assert.Single(Descendants(panel).OfType<Image>(), image => image.Name == "RankCoverImage").Source);
+        Assert.Equal(Visibility.Visible, Assert.Single(Descendants(panel).OfType<Border>(), border => border.Name == "RankPlaceholder").Visibility);
+        AssertAuthorCloudVisuals(view);
+        var missingCoverAction = Assert.Single(Descendants(panel).OfType<Button>(), button => button.Name == "RankAction");
+        requestedWorks.Clear();
+        missingCoverAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(missingCover.WorkId, Assert.Single(requestedWorks));
+        SaveSnapshot(panel, "dashboard-missing-cover.png");
 
         Populate(window.HomeView);
         ((FrameworkElement)Find(window, "DashboardHero")).Visibility = Visibility.Collapsed;
@@ -568,6 +635,22 @@ public sealed class UiSmokeTests
                 Assert.InRange(scroll.ScrollableHeight, 0, 1);
             AssertWithin((Button)Find(window, "GlobalAddWorkButton"), root);
             AssertWithin((TextBox)Find(window, "GlobalSearchBox"), root);
+        }
+        foreach (var width in new[] { 1092d, 1096d, 1100d, 1096d, 1280d })
+        {
+            root.Measure(new Size(width, 800));
+            root.Arrange(new Rect(0, 0, width, 800));
+            root.UpdateLayout();
+            var density = window.HomeView.Tag;
+            for (var pass = 0; pass < 3; pass++)
+            {
+                root.InvalidateMeasure();
+                root.Measure(new Size(width, 800));
+                root.Arrange(new Rect(0, 0, width, 800));
+                root.UpdateLayout();
+                Assert.Equal(density, window.HomeView.Tag);
+            }
+            Assert.InRange(scroll.ScrollableHeight, 0, 1);
         }
         SaveSnapshot(root, "dashboard-full.png");
         window.ShowLibrary();
@@ -596,13 +679,269 @@ public sealed class UiSmokeTests
             SettleAnimations();
             compactHost.UpdateLayout();
             Assert.InRange(scroll.ScrollableHeight, 0, 1);
-            foreach (var name in new[] { "DashboardRecentSection", "DashboardSideColumn", "DashboardJournalSection", "DashboardAuthorRanking" })
+            foreach (var name in new[] { "DashboardRecentSection", "DashboardSideColumn", "DashboardAuthorRanking" })
                 AssertWithin((FrameworkElement)Find(window, name), scroll);
+            AssertDashboardRankingsFillWidth(window.HomeView);
+            AssertDashboardRankingVisuals(window.HomeView, checkTextBounds: true);
             AssertWithin(add, root);
             AssertWithin((TextBox)Find(window, "GlobalSearchBox"), root);
             SaveSnapshot(compactHost, "dashboard-full-compact.png");
+            AssertAuthorCloudKeyboard(window.HomeView, compactHost, add);
         }
         finally { compactHost.Close(); }
+    }
+
+    private static void AssertDashboardRankingVisuals(Yiye.Views.DashboardView view, bool checkTextBounds)
+    {
+        static T Named<T>(DependencyObject root, string name) where T : FrameworkElement =>
+            Assert.Single(Descendants(root).OfType<T>(), element => element.Name == name);
+
+        static void AssertMeter(ProgressBar meter, double expectedRatio)
+        {
+            Assert.Equal(0, meter.Minimum);
+            Assert.Equal(1, meter.Maximum);
+            Assert.Equal(expectedRatio, meter.Value, precision: 6);
+            var track = (FrameworkElement)meter.Template.FindName("PART_Track", meter);
+            var indicator = (FrameworkElement)meter.Template.FindName("PART_Indicator", meter);
+            Assert.True(track.ActualWidth > 0);
+            Assert.InRange(Math.Abs(indicator.ActualWidth - track.ActualWidth * expectedRatio), 0, 1);
+        }
+
+        foreach (var (section, expectedIds) in new[]
+        {
+            ("DashboardBookRanking", new[] { "3", "2", "1" }),
+            ("DashboardScreenRanking", new[] { "6", "5", "4" })
+        })
+        {
+            var ranking = (FrameworkElement)view.FindName(section);
+            var buttons = Descendants(ranking).OfType<Button>().Where(button => button.Tag is ShowcaseCard).ToArray();
+            Assert.Equal(expectedIds, buttons.Select(button => ((ShowcaseCard)button.Tag).WorkId));
+            Assert.Single(buttons, button => ((ShowcaseCard)button.Tag).IsLead);
+            for (var index = 0; index < buttons.Length; index++)
+            {
+                var button = buttons[index];
+                var card = (ShowcaseCard)button.Tag;
+                Assert.Equal(index + 1, card.Position);
+                Assert.Equal(index == 0, card.IsLead);
+                Assert.Equal((index + 1).ToString("00"), Named<TextBlock>(button, "RankPosition").Text);
+                var image = Named<Image>(button, "RankCoverImage");
+                Assert.NotNull(image.Source);
+                AssertWithin(image, button);
+                Assert.Equal(Visibility.Collapsed, Named<Border>(button, "RankPlaceholder").Visibility);
+                var score = Named<TextBlock>(button, "RankScore");
+                Assert.Equal("3.5", score.Text);
+                AssertMeter(Named<ProgressBar>(button, "RankMeter"), 3.5 / RatingScale.RankMaximum);
+                if (checkTextBounds)
+                {
+                    var title = Named<TextBlock>(button, "RankTitle");
+                    Assert.True(title.FontSize >= 15);
+                    AssertWithin(title, button);
+                    AssertWithin(score, button);
+                    AssertNoOverlap([title, score], button);
+                }
+            }
+            Assert.True(Named<Image>(buttons[0], "RankCoverImage").ActualHeight
+                > Named<Image>(buttons[1], "RankCoverImage").ActualHeight);
+        }
+
+        AssertAuthorCloudVisuals(view);
+    }
+
+    private static Border[] AssertAuthorCloudVisuals(Yiye.Views.DashboardView view)
+    {
+        var cloud = (ItemsControl)view.FindName("AuthorCloud");
+        var count = (TextBlock)view.FindName("AuthorCloudCount");
+        Assert.Equal(view.DashboardTopAuthors.Count, cloud.Items.Count);
+        Assert.InRange(cloud.Items.Count, 0, 8);
+        if (cloud.Items.Count == 0)
+        {
+            Assert.Equal(Visibility.Collapsed, cloud.Visibility);
+            Assert.Equal(string.Empty, count.Text);
+            var authorSection = (FrameworkElement)view.FindName("DashboardAuthorRanking");
+            Assert.Equal(Visibility.Visible, Assert.Single(Descendants(authorSection).OfType<TextBlock>(), text => text.Text == "暂无作者评分").Visibility);
+            return [];
+        }
+
+        var layout = Assert.Single(Descendants(cloud).OfType<WordCloudPanel>());
+        var containers = layout.Children.OfType<FrameworkElement>().ToArray();
+        var visible = containers.Where(container => container.Visibility == Visibility.Visible).ToArray();
+        Assert.InRange(visible.Length, 1, cloud.Items.Count);
+        Assert.Equal(visible.Length, layout.VisibleCount);
+        Assert.Equal($"前 {visible.Length} 位", count.Text);
+        Assert.Equal(view.DashboardTopAuthors.Take(visible.Length), visible.Select(container => (AuthorCard)container.DataContext));
+        Assert.All(containers.Skip(visible.Length), container => Assert.Equal(Visibility.Hidden, container.Visibility));
+        AssertNoOverlap(visible, layout);
+        var words = visible.Select(container => Assert.Single(Descendants(container).OfType<Border>(), border => border.Name == "AuthorCloudWord")).ToArray();
+        foreach (var word in words)
+        {
+            var card = Assert.IsType<AuthorCard>(word.DataContext);
+            var label = Assert.Single(Descendants(word).OfType<TextBlock>(), text => text.Name == "AuthorCloudLabel");
+            Assert.Equal(card.CloudLabel, label.Text);
+            Assert.Equal(Equals(view.Tag, "Compact") ? card.CompactFontSize : card.FontSize, label.FontSize);
+            Assert.InRange(label.FontSize, 16.2, 30);
+            Assert.True(label.LayoutTransform.Value.IsIdentity);
+            Assert.True(label.RenderTransform.Value.IsIdentity);
+            if (card.IsVertical)
+            {
+                Assert.Equal(TextAlignment.Center, label.TextAlignment);
+                Assert.True(label.ActualHeight > label.ActualWidth);
+                Assert.True(label.ActualHeight >= label.LineHeight * card.Author.Length - 1,
+                    $"Vertical name {card.Author} must retain all characters.");
+            }
+            Assert.True(word.Focusable);
+            AssertWithin(word, cloud);
+            AssertWithin(label, word);
+            var summary = $"{card.Author}\n{card.Score:0.0} / 5.0 · 已评 {card.Value.WorkCount} 本";
+            Assert.IsType<ToolTip>(word.ToolTip);
+            Assert.Equal(summary, System.Windows.Automation.AutomationProperties.GetName(word));
+        }
+        AssertNoOverlap(words, cloud);
+        return words;
+    }
+
+    private static void AssertAuthorCloudLayouts(Yiye.Views.DashboardView view, DashboardShowcaseItem[] samples)
+    {
+        var panel = (FrameworkElement)view.FindName("DashboardShowcasePanel");
+        var cloud = (ItemsControl)view.FindName("AuthorCloud");
+        var candidates = Enumerable.Range(1, 10).Select(index => new DashboardAuthorRank
+        {
+            Position = index,
+            Author = new[] { "孙立天", "加西亚·马尔克斯", "林晓光", "余华", "Jane Austen", "村上春树", "波伏瓦", "毛姆", "鲁迅", "沈从文" }[index - 1],
+            WorkCount = 1, RatingCount = 1, Score = 4.2
+        }).ToArray();
+        void RenderAuthors(IEnumerable<DashboardAuthorRank> authors)
+        {
+            view.Render([new MediaWork { Id = "sample", Title = "作品", Kind = "book" }],
+                new DashboardSnapshot([], new DashboardShowcase { CompletedWorks = samples, TopAuthors = authors.ToArray() }));
+        }
+        void Layout()
+        {
+            for (var pass = 0; pass < 2; pass++)
+            {
+                panel.Measure(new Size(1500, double.PositiveInfinity));
+                panel.Arrange(new Rect(0, 0, 1500, panel.DesiredSize.Height));
+                panel.UpdateLayout();
+            }
+        }
+        cloud.Width = 420;
+        foreach (var count in new[] { 8, 0, 1, 3, 8 })
+        {
+            RenderAuthors(candidates.Take(count));
+            Layout();
+            Assert.Equal(count, AssertAuthorCloudVisuals(view).Length);
+        }
+        RenderAuthors(candidates);
+        cloud.Width = 120;
+        Layout();
+        var narrow = AssertAuthorCloudVisuals(view);
+        Assert.InRange(narrow.Length, 1, 7);
+        var positions = narrow.Select(word => word.TransformToAncestor(cloud).TransformBounds(new Rect(word.RenderSize))).ToArray();
+        for (var repeat = 0; repeat < 3; repeat++)
+        {
+            panel.InvalidateMeasure();
+            Layout();
+            var words = AssertAuthorCloudVisuals(view);
+            Assert.Equal(positions, words.Select(word => word.TransformToAncestor(cloud).TransformBounds(new Rect(word.RenderSize))));
+        }
+        cloud.Width = 420;
+        Layout();
+        var mixed = AssertAuthorCloudVisuals(view);
+        Assert.Equal(8, mixed.Length);
+        Assert.Contains(mixed, word => ((AuthorCard)word.DataContext).IsVertical);
+        Assert.Contains(mixed, word => !((AuthorCard)word.DataContext).IsVertical);
+        SaveSnapshot(panel, "author-cloud-mixed-directions.png");
+
+        RenderAuthors([new DashboardAuthorRank
+        { Position = 1, Author = "一位名字很长的作者，完整姓名和评分可在提示中阅读", WorkCount = 2, RatingCount = 2, Score = 4.2 }]);
+        cloud.Width = 160;
+        Layout();
+        var longName = Assert.Single(AssertAuthorCloudVisuals(view));
+        Assert.Equal(TextTrimming.CharacterEllipsis, Assert.Single(Descendants(longName).OfType<TextBlock>()).TextTrimming);
+        SaveSnapshot(panel, "author-cloud-long-name.png");
+        cloud.Width = double.NaN;
+    }
+
+    private static void AssertAuthorCloudKeyboard(Yiye.Views.DashboardView view, Window host, Button nextControl)
+    {
+        static void AssertOpenTooltipContent(Border focusedWord)
+        {
+            SettleAnimations();
+            var card = Assert.IsType<AuthorCard>(focusedWord.DataContext);
+            var tip = Assert.IsType<ToolTip>(focusedWord.ToolTip);
+            Assert.True(tip.IsOpen);
+            Assert.Equal($"{card.Author}\n{card.Score:0.0} / 5.0 · 已评 {card.Value.WorkCount} 本", tip.Content);
+        }
+
+        var word = AssertAuthorCloudVisuals(view)[0];
+        var tooltip = Assert.IsType<ToolTip>(word.ToolTip);
+        host.Activate();
+        Assert.True(word.Focus());
+        Assert.True(word.IsKeyboardFocused);
+        Assert.True(tooltip.IsOpen);
+        AssertOpenTooltipContent(word);
+        var escape = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(word), Environment.TickCount, Key.Escape)
+        { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        word.RaiseEvent(escape);
+        Assert.True(escape.Handled);
+        Assert.False(tooltip.IsOpen);
+        Assert.True(nextControl.Focus());
+        Assert.True(word.Focus());
+        Assert.True(tooltip.IsOpen);
+        Assert.True(nextControl.Focus());
+        Assert.False(tooltip.IsOpen);
+
+        var cloud = (ItemsControl)view.FindName("AuthorCloud");
+        var oldWidth = host.Width;
+        var oldHeight = host.Height;
+        try
+        {
+            host.Width = 1600;
+            host.Height = 800;
+            cloud.Width = 420;
+            host.UpdateLayout();
+            SettleAnimations();
+            var words = AssertAuthorCloudVisuals(view);
+            Assert.Equal(8, words.Length);
+            var longName = Assert.Single(words, item => ((AuthorCard)item.DataContext).Author == "加西亚·马尔克斯");
+            Assert.True(longName.Focus());
+            AssertOpenTooltipContent(longName);
+            var lastWord = words[^1];
+            var lastTooltip = Assert.IsType<ToolTip>(lastWord.ToolTip);
+            Assert.True(lastWord.Focus());
+            Assert.True(lastTooltip.IsOpen);
+            AssertOpenTooltipContent(lastWord);
+            cloud.Width = 60;
+            host.UpdateLayout();
+            SettleAnimations();
+            Assert.False(lastWord.IsVisible);
+            Assert.False(lastTooltip.IsOpen);
+        }
+        finally
+        {
+            cloud.Width = double.NaN;
+            host.Width = oldWidth;
+            host.Height = oldHeight;
+            host.UpdateLayout();
+            nextControl.Focus();
+        }
+    }
+
+    private static void AssertDashboardRankingsFillWidth(Yiye.Views.DashboardView view)
+    {
+        var panel = (FrameworkElement)view.FindName("DashboardShowcasePanel");
+        var rankings = new[] { "DashboardBookRanking", "DashboardScreenRanking", "DashboardAuthorRanking" }
+            .Select(name => (FrameworkElement)view.FindName(name)).ToArray();
+        Assert.All(rankings, ranking => AssertWithin(ranking, panel));
+        AssertNoOverlap(rankings, panel);
+        var bounds = rankings.Select(ranking => ranking.TransformToAncestor(panel)
+            .TransformBounds(new Rect(ranking.RenderSize))).ToArray();
+        Assert.InRange(Math.Abs(bounds[0].Left), 0, 1);
+        Assert.InRange(Math.Abs(panel.ActualWidth - bounds[^1].Right), 0, 1);
+        for (var index = 1; index < bounds.Length; index++)
+        {
+            Assert.InRange(Math.Abs(bounds[index].Top - bounds[0].Top), 0, 1);
+            Assert.InRange(bounds[index].Left - bounds[index - 1].Right, 0, 24);
+        }
     }
 
     private static void AssertLibraryLayout(TempDatabase context, string coverPath)
@@ -977,38 +1316,6 @@ public sealed class UiSmokeTests
                 Assert.True(intersection.IsEmpty || intersection.Width <= 0.5 || intersection.Height <= 0.5,
                     $"Items {first} and {second} overlap: {bounds[first]} and {bounds[second]}.");
             }
-    }
-
-    private static void AssertTimelineTemplate(MainWindow mainWindow)
-    {
-        var timeline = Assert.IsType<ItemsControl>(Find(mainWindow, "DashboardTimelineList"));
-        var presenter = new ContentPresenter
-        {
-            ContentTemplate = timeline.ItemTemplate,
-            Resources = mainWindow.HomeView.Resources,
-            Width = 280,
-            Content = new DashboardTimelineDay
-            {
-                Date = new DateOnly(2026, 8, 28),
-                Items = [new TimelineCard(new DashboardTimelineItem
-                {
-                    Id = "completion", WorkId = "timeline-test", Title = "一本完成的书", Kind = "book",
-                    Notes = "合上书之后，仍然记得这一段旅程。"
-                })]
-            }
-        };
-        presenter.Measure(new Size(presenter.Width, double.PositiveInfinity));
-        presenter.Arrange(new Rect(presenter.DesiredSize));
-        presenter.UpdateLayout();
-        var buttons = Descendants(presenter).OfType<Button>().ToArray();
-        Assert.Single(buttons);
-        Assert.All(buttons, button =>
-        {
-            Assert.IsType<TimelineCard>(button.Tag);
-            AssertWithin(button, presenter);
-            Assert.True(button.IsEnabled && button.Focusable);
-        });
-        SaveSnapshot(presenter, "timeline-day.png");
     }
 
     private static object Find(Window window, string name) => window is MainWindow main

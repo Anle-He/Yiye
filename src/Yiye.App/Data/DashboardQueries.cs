@@ -42,7 +42,7 @@ public sealed class DashboardQueries(Database database) : SqliteStore(database)
         return items;
     }
 
-    public async Task<DashboardShowcase> GetDashboardShowcaseAsync()
+    public async Task<DashboardShowcase> GetDashboardShowcaseAsync(int authorLimit = 8)
     {
         var works = new List<DashboardShowcaseItem>();
         var authors = new List<DashboardAuthorRank>();
@@ -105,8 +105,9 @@ public sealed class DashboardQueries(Database database) : SqliteStore(database)
             FROM rated_works
             GROUP BY author
             ORDER BY author_rank DESC, rating_count DESC, author
-            LIMIT 3;
+            LIMIT $authorLimit;
             """;
+        authorsCommand.Parameters.AddWithValue("$authorLimit", Math.Clamp(authorLimit, 1, 20));
         await using (var reader = await authorsCommand.ExecuteReaderAsync())
         {
             var position = 1;

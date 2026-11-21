@@ -24,7 +24,7 @@ public sealed class LibraryRepository
     public Task UpdateExperienceAsync(MediaExperience experience) => Experiences.UpdateExperienceAsync(experience);
     public Task DeleteExperienceAsync(string experienceId, string workId) => Experiences.DeleteExperienceAsync(experienceId, workId);
     public Task<IReadOnlyList<DashboardTimelineItem>> GetRecentTimelineAsync(int limit = 5) => Dashboard.GetRecentTimelineAsync(limit);
-    public Task<DashboardShowcase> GetDashboardShowcaseAsync() => Dashboard.GetDashboardShowcaseAsync();
+    public Task<DashboardShowcase> GetDashboardShowcaseAsync(int authorLimit = 8) => Dashboard.GetDashboardShowcaseAsync(authorLimit);
     public Task<IReadOnlyList<WorkCover>> GetCoversAsync(string workId) => Covers.GetCoversAsync(workId);
     public Task AddCoversAsync(string workId, IReadOnlyList<string> sourcePaths) => Covers.AddCoversAsync(workId, sourcePaths);
     public Task SetPrimaryCoverAsync(string workId, string coverId) => Covers.SetPrimaryCoverAsync(workId, coverId);

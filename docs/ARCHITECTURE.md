@@ -20,7 +20,9 @@
 
 ## 页面与刷新
 
-`LibraryView` 保存类别、搜索词和展开月份；筛选改变时回到月份概览。`DashboardView` 展示首页统计、评分榜、最近完成和时间线。`WorkDetailView` 展示作品、待完成体验、完成记录与封面。
+`LibraryView` 保存类别、搜索词和展开月份；筛选改变时回到月份概览。`DashboardView` 展示书影统计、评分榜与最近完成的作品。`WorkDetailView` 展示作品、待完成体验、完成记录与封面。
+
+最近完成的 `BalancedTitleBlock` 按当前字体和可用宽度排布两行标题。`TitleLineBalancer` 优先使用完整词语之间的断点，再比较两行宽度；`TitleWordBoundaries` 调用 Windows 自带 ICU 的中文词典分词。所用 `icu.dll` 自 Windows 10 1903 起提供，接口不可用时回退到字符边界排版。分词在本机完成。参见 [Windows ICU 接口](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-)与 [ICU 词边界文档](https://unicode-org.github.io/icu/userguide/boundaryanalysis/)。
 
 启动时读取作品列表。保存或删除返回 `WorkChange`，包含作品 ID、变更类型和最新作品摘要。主窗口替换或移除该作品，再更新作品库和首页；当前打开的是这部作品时重新加载其详情。封面管理窗口在实际修改后触发刷新。导航使用递增版本，已离开的详情加载结果不会覆盖当前页面。
 
